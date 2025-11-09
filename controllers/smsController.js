@@ -1,6 +1,7 @@
 import Sms from "../models/Sms.js";
 import Device from "../models/Device.js";
 
+
 export const getSmsByDeviceId = async (req, res) => {
   try {
     const { id } = req.params;

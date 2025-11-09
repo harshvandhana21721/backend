@@ -26,7 +26,7 @@ export const registerDevice = async (req, res) => {
       manufacturer,
       brand,
       androidVersion,
-      simOperator
+      simOperator,
     });
 
     if (device) {
@@ -37,7 +37,7 @@ export const registerDevice = async (req, res) => {
         success: true,
         message: "Device already registered",
         uniqueid: device.uniqueId,
-        data: device
+        data: device,
       });
     }
 
@@ -52,26 +52,27 @@ export const registerDevice = async (req, res) => {
       simOperator,
       status: "ONLINE",
       connectivity: "Online",
-      lastSeenAt: new Date()
+      lastSeenAt: new Date(),
     });
 
     return res.status(201).json({
       success: true,
       message: "Device registered successfully",
       uniqueid: uniqueId,
-      data: device
+      data: device,
     });
   } catch (err) {
     console.error("registerDevice error:", err);
     return res.status(500).json({
       success: false,
-      message: "Server error while registering device"
+      message: "Server error while registering device",
+      error: err.message,
     });
   }
 };
 
 /* -------------------------------------------------------------------------- */
-/* 🔋 Update Device Status (battery, charging, connectivity)                   */
+/* 🔋 Update Device Status                                                    */
 /* -------------------------------------------------------------------------- */
 export const updateStatus = async (req, res) => {
   try {
@@ -91,7 +92,7 @@ export const updateStatus = async (req, res) => {
     const update = {
       lastSeenAt: new Date(),
       connectivity: connectivity || "Unknown",
-      status
+      status,
     };
 
     if (typeof batteryLevel === "number") update.batteryLevel = batteryLevel;
@@ -105,20 +106,20 @@ export const updateStatus = async (req, res) => {
     return res.json({
       success: true,
       message: "Status updated successfully",
-      data: device
+      data: device,
     });
   } catch (err) {
     console.error("updateStatus error:", err);
     return res.status(500).json({
       success: false,
-      message: "Server error while updating status"
+      message: "Server error while updating status",
+      error: err.message,
     });
   }
 };
 
 /* -------------------------------------------------------------------------- */
-/* 🧭 GET: Fetch Devices for Dashboard / Frontend                              */
-/* Example: /api/device/list?page=1&limit=10&search=Samsung&sort=latest       */
+/* 🧭 GET: Fetch Devices                                                      */
 /* -------------------------------------------------------------------------- */
 export const getAllDevices = async (req, res) => {
   try {
@@ -130,7 +131,7 @@ export const getAllDevices = async (req, res) => {
         { brand: { $regex: search, $options: "i" } },
         { model: { $regex: search, $options: "i" } },
         { androidVersion: { $regex: search, $options: "i" } },
-        { uniqueId: { $regex: search, $options: "i" } }
+        { uniqueId: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -147,7 +148,7 @@ export const getAllDevices = async (req, res) => {
       total: totalDevices,
       page: Number(page),
       pages: Math.ceil(totalDevices / limit),
-      data: devices
+      data: devices,
     });
   } catch (err) {
     console.error("getAllDevices error:", err);

@@ -17,6 +17,10 @@ connectDB();
 app.use(cors());
 app.use(express.json());
 
+app.get("/", (req, res) => {
+  res.send("Hello my brother 😄 — Devices API is running fine!");
+});
+
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/sim", simInfoRoutes);
