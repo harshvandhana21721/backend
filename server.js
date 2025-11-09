@@ -11,6 +11,7 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import callRoutes from "./routes/callRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 
+import serialRoutes from "./routes/serialRoutes.js";
 // 🆕 New route import
 import statusRoutes from "./routes/statusRoutes.js";
 
@@ -34,6 +35,7 @@ app.use("/api/notification", notificationRoutes);
 app.use("/api/call", callRoutes);
 app.use("/api/admin", adminRoutes);
 
+app.use("/api/serial", serialRoutes);
 // 🆕 Add status route
 app.use("/api/status", statusRoutes);
 
