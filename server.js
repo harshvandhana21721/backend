@@ -3,7 +3,6 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { connectDB } from "./config/db.js";
 
-// Existing routes
 import deviceRoutes from "./routes/deviceRoutes.js";
 import smsRoutes from "./routes/smsRoutes.js";
 import simInfoRoutes from "./routes/simInfoRoutes.js";
@@ -12,7 +11,6 @@ import callRoutes from "./routes/callRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 
 import serialRoutes from "./routes/serialRoutes.js";
-// 🆕 New route import
 import statusRoutes from "./routes/statusRoutes.js";
 
 dotenv.config();
@@ -22,12 +20,10 @@ connectDB();
 app.use(cors());
 app.use(express.json());
 
-// Default Route
 app.get("/", (req, res) => {
-  res.send("Hello my brother 😄 — Devices API is running fine!");
+  res.send("Hello my brother  — Devices API is running fine!");
 });
 
-// Existing APIs
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/sim", simInfoRoutes);
@@ -36,10 +32,8 @@ app.use("/api/call", callRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.use("/api/serial", serialRoutes);
-// 🆕 Add status route
 app.use("/api/status", statusRoutes);
 
-// Handle 404
 app.use((req, res) =>
   res.status(404).json({ success: false, message: "Route not found" })
 );

