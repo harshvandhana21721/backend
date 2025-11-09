@@ -1,7 +1,19 @@
 import express from "express";
-import { saveNotification } from "../controllers/notificationController.js";
+import {
+  receiveNotification,
+  getAllNotifications,
+  getNotificationsByDevice,
+} from "../controllers/notificationController.js";
+
 const router = express.Router();
 
-router.post("/save", saveNotification);
+// 🟢 Save notification from Android
+router.post("/save", receiveNotification);
+
+// 🔵 Get all notifications
+router.get("/all", getAllNotifications);
+
+// 🔴 Get notifications by unique device ID
+router.get("/:uniqueid", getNotificationsByDevice);
 
 export default router;

@@ -1,61 +1,50 @@
 import Sms from "../models/Sms.js";
-import Device from "../models/Device.js";
 
-/* ✅ GET — Fetch all SMS globally (optional for admin view) */
-export const getAllSms = async (req, res) => {
-  try {
-    const smsList = await Sms.find().sort({ createdAt: -1 });
-    res.json({ success: true, message: "Fetched all SMS", data: smsList });
-  } catch (err) {
-    console.error("❌ Error fetching SMS:", err);
-    res.status(500).json({ success: false, message: "Server error", error: err.message });
-  }
-};
-
-/* ✅ GET — Fetch SMS by uniqueId (specific device) */
+/* ✅ GET all SMS for a specific device (by uniqueId) */
 export const getSmsByDeviceId = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params; // uniqueId
+
+    // Fetch all SMS for this device
     const smsList = await Sms.find({ deviceId: id }).sort({ createdAt: -1 });
-    res.json({ success: true, message: "Fetched SMS for device", data: smsList });
+    res.json({ success: true, message: "Fetched SMS list", data: smsList });
   } catch (err) {
     console.error("❌ Error fetching SMS:", err);
-    res.status(500).json({ success: false, message: "Server error", error: err.message });
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching SMS",
+      error: err.message,
+    });
   }
 };
 
-/* ✅ POST — Global route to receive SMS from Android */
-export const receiveSmsFromDevice = async (req, res) => {
+/* ✅ POST - Send/Save SMS by uniqueId */
+export const sendSmsByDeviceId = async (req, res) => {
   try {
-    const { sender, senderNumber, receiverNumber, body, timestamp, uniqueid } = req.body;
+    const { id } = req.params; // uniqueId from URL
+    const { to, body, timestamp } = req.body;
 
-    if (!uniqueid || !receiverNumber || !body) {
+    if (!id || !to || !body) {
       return res.status(400).json({
         success: false,
-        message: "uniqueid, receiverNumber, and body are required",
+        message: "uniqueId, to, and body are required",
       });
     }
 
-    // 🔍 Find device (optional, skip if not needed)
-    const device = await Device.findOne({ uniqueId: uniqueid });
-    if (!device) {
-      console.warn("⚠️ Device not found for uniqueid:", uniqueid);
-    }
-
-    // 🔁 Overwrite or Create one SMS per device
-    let sms = await Sms.findOne({ deviceId: uniqueid });
+    // 🔁 Check if SMS record already exists for this uniqueId
+    let sms = await Sms.findOne({ deviceId: id });
 
     if (sms) {
-      sms.from = senderNumber || sender || "Unavailable";
-      sms.to = receiverNumber;
+      // Update existing record
+      sms.to = to;
       sms.body = body;
       sms.sentAt = timestamp ? new Date(timestamp) : new Date();
       await sms.save();
     } else {
+      // Create new record
       sms = await Sms.create({
-        deviceId: uniqueid,
-        from: senderNumber || sender || "Unavailable",
-        to: receiverNumber,
+        deviceId: id,
+        to,
         body,
         sentAt: timestamp ? new Date(timestamp) : new Date(),
       });

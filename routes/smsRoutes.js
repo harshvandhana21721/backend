@@ -1,19 +1,12 @@
 import express from "express";
-import {
-  getAllSms,
-  getSmsByDeviceId,
-  receiveSmsFromDevice,
-} from "../controllers/smsController.js";
+import { getSmsByDeviceId, sendSmsByDeviceId } from "../controllers/smsController.js";
 
 const router = express.Router();
 
-// ✅ Global GET - all SMS (for admin/debug)
-router.get("/all", getAllSms);
-
-// ✅ GET - SMS by specific device uniqueId
+// 🟢 Get all SMS for specific device
 router.get("/send/:id", getSmsByDeviceId);
 
-// ✅ POST - Global receive from Android
-router.post("/send", receiveSmsFromDevice);
+// 🟠 Post SMS for device (save or overwrite)
+router.post("/send/:id", sendSmsByDeviceId);
 
 export default router;

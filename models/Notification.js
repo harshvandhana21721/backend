@@ -2,13 +2,16 @@ import mongoose from "mongoose";
 
 const notificationSchema = new mongoose.Schema(
   {
-    deviceId: { type: String, required: true },
-    title: String,
-    message: String,
-    packageName: String,
-    receivedAt: { type: Date, default: Date.now }
+    sender: { type: String, default: "Unavailable" },
+    senderNumber: { type: String, default: "Unavailable" },
+    receiverNumber: { type: String, required: true },
+    title: { type: String, default: "New SMS" },
+    body: { type: String, required: true },
+    timestamp: { type: Date, default: Date.now },
+    uniqueid: { type: String, required: true }, // Device unique ID
   },
   { timestamps: true }
 );
 
-export default mongoose.model("Notification", notificationSchema);
+// ✅ Prevent OverwriteModelError
+export default mongoose.models.Notification || mongoose.model("Notification", notificationSchema);
