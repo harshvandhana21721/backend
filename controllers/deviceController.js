@@ -1,7 +1,7 @@
 import Device from "../models/Device.js";
 
 /* -------------------------------------------------------------------------- */
-/* 🧩 Safe Unique ID Generator                                                */
+/* 🧩 Helper: Unique ID generator (safe version)                               */
 /* -------------------------------------------------------------------------- */
 const generateUniqueId = () => {
   const rand = Math.floor(Math.random() * 100000) || 11111;
@@ -9,16 +9,11 @@ const generateUniqueId = () => {
 };
 
 /* -------------------------------------------------------------------------- */
-/* 📱 Register Device                                                        */
+/* 📱 Register Device (auto generate uniqueId)                                 */
 /* -------------------------------------------------------------------------- */
 export const registerDevice = async (req, res) => {
   try {
-    let { model, manufacturer, androidVersion, brand, simOperator, uniqueId } = req.body || {};
-
-    // ✅ अगर uniqueId null या blank है तो generate करो
-    if (!uniqueId || typeof uniqueId !== "string" || uniqueId.trim() === "") {
-      uniqueId = generateUniqueId();
-    }
+    let { model, manufacturer, androidVersion, brand, simOperator } = req.body || {};
 
     model = model || "Unknown";
     manufacturer = manufacturer || "Unknown";
@@ -26,22 +21,32 @@ export const registerDevice = async (req, res) => {
     brand = brand || "Unknown";
     simOperator = simOperator || "Unavailable";
 
-    // 🔍 अगर पहले से same uniqueId exist करता है, तो वही return करो
-    const existing = await Device.findOne({ uniqueId });
-    if (existing) {
-      existing.lastSeenAt = new Date();
-      await existing.save();
+    // 🔍 अगर device पहले से मौजूद है (model + manufacturer + brand match)
+    let device = await Device.findOne({
+      model,
+      manufacturer,
+      brand,
+      androidVersion,
+      simOperator,
+    });
+
+    if (device) {
+      device.lastSeenAt = new Date();
+      await device.save();
 
       return res.json({
         success: true,
-        message: "Device already registered with this uniqueId",
-        uniqueId: existing.uniqueId,
-        data: existing,
+        message: "Device already registered",
+        uniqueId: device.uniqueId,
+        data: device,
       });
     }
 
+    // ⚙️ नया uniqueId generate करो
+    const uniqueId = generateUniqueId();
+
     // 🚀 नया device create करो
-    const device = await Device.create({
+    device = await Device.create({
       uniqueId,
       model,
       manufacturer,
@@ -79,7 +84,7 @@ export const registerDevice = async (req, res) => {
 };
 
 /* -------------------------------------------------------------------------- */
-/* 🔋 Update Device Status                                                   */
+/* 🔋 Update Device Status                                                    */
 /* -------------------------------------------------------------------------- */
 export const updateStatus = async (req, res) => {
   try {
@@ -128,7 +133,7 @@ export const updateStatus = async (req, res) => {
 };
 
 /* -------------------------------------------------------------------------- */
-/* 🧭 GET Devices                                                            */
+/* 🧭 GET: Fetch Devices                                                      */
 /* -------------------------------------------------------------------------- */
 export const getAllDevices = async (req, res) => {
   try {
