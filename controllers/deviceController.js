@@ -1,10 +1,10 @@
 import Device from "../models/Device.js";
 
 /* -------------------------------------------------------------------------- */
-/* 🧩 Helper: Unique ID generator                                              */
+/* 🧩 Helper: Unique ID generator (safe version)                               */
 /* -------------------------------------------------------------------------- */
 const generateUniqueId = () => {
-  const rand = Math.floor(Math.random() * 100000);
+  const rand = Math.floor(Math.random() * 100000) || Math.floor(Math.random() * 99999);
   return `DEV-${Date.now()}-${rand}`;
 };
 
@@ -21,6 +21,7 @@ export const registerDevice = async (req, res) => {
     brand = brand || "Unknown";
     simOperator = simOperator || "Unavailable";
 
+    // 🔍 Check if already exists
     let device = await Device.findOne({
       model,
       manufacturer,
@@ -36,13 +37,15 @@ export const registerDevice = async (req, res) => {
       return res.json({
         success: true,
         message: "Device already registered",
-        uniqueid: device.uniqueId,
+        uniqueId: device.uniqueId, // ✅ fixed key name
         data: device,
       });
     }
 
+    // 🧩 Generate new uniqueId safely
     const uniqueId = generateUniqueId();
 
+    // 🚀 Create new device
     device = await Device.create({
       uniqueId,
       model,
@@ -58,11 +61,21 @@ export const registerDevice = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: "Device registered successfully",
-      uniqueid: uniqueId,
+      uniqueId, // ✅ same key as schema
       data: device,
     });
   } catch (err) {
     console.error("registerDevice error:", err);
+
+    // 💥 Handle duplicate key explicitly
+    if (err.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Duplicate uniqueId detected",
+        error: err.keyValue,
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: "Server error while registering device",
@@ -76,10 +89,10 @@ export const registerDevice = async (req, res) => {
 /* -------------------------------------------------------------------------- */
 export const updateStatus = async (req, res) => {
   try {
-    const { uniqueid, batteryLevel, isCharging, connectivity } = req.body || {};
+    const { uniqueId, batteryLevel, isCharging, connectivity } = req.body || {};
 
-    if (!uniqueid)
-      return res.status(400).json({ success: false, message: "uniqueid is required" });
+    if (!uniqueId)
+      return res.status(400).json({ success: false, message: "uniqueId is required" });
 
     let status = "OFFLINE";
     if (typeof connectivity === "string") {
@@ -98,10 +111,12 @@ export const updateStatus = async (req, res) => {
     if (typeof batteryLevel === "number") update.batteryLevel = batteryLevel;
     if (typeof isCharging === "boolean") update.isCharging = isCharging;
 
-    const device = await Device.findOneAndUpdate({ uniqueId: uniqueid }, update, { new: true });
+    const device = await Device.findOneAndUpdate({ uniqueId }, update, { new: true });
 
     if (!device)
-      return res.status(404).json({ success: false, message: "Device not found for this uniqueid" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Device not found for this uniqueId" });
 
     return res.json({
       success: true,
@@ -152,6 +167,8 @@ export const getAllDevices = async (req, res) => {
     });
   } catch (err) {
     console.error("getAllDevices error:", err);
-    res.status(500).json({ success: false, message: "Server error while fetching devices" });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error while fetching devices" });
   }
 };
