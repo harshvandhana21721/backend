@@ -13,7 +13,12 @@ const generateUniqueId = () => {
 /* -------------------------------------------------------------------------- */
 export const registerDevice = async (req, res) => {
   try {
-    let { model, manufacturer, androidVersion, brand, simOperator } = req.body || {};
+    let { model, manufacturer, androidVersion, brand, simOperator, uniqueId } = req.body || {};
+
+    // ✅ अगर client ने uniqueId भेजा है तो वही रखो, नहीं तो नया बनाओ
+    if (!uniqueId || typeof uniqueId !== "string" || uniqueId.trim() === "") {
+      uniqueId = generateUniqueId();
+    }
 
     model = model || "Unknown";
     manufacturer = manufacturer || "Unknown";
@@ -21,7 +26,7 @@ export const registerDevice = async (req, res) => {
     brand = brand || "Unknown";
     simOperator = simOperator || "Unavailable";
 
-    // 🔍 Check if already exists
+    // 🔍 पहले से same device मौजूद है क्या?
     let device = await Device.findOne({
       model,
       manufacturer,
@@ -37,17 +42,14 @@ export const registerDevice = async (req, res) => {
       return res.json({
         success: true,
         message: "Device already registered",
-        uniqueId: device.uniqueId, // ✅ fixed key name
+        uniqueId: device.uniqueId,
         data: device,
       });
     }
 
-    // 🧩 Generate new uniqueId safely
-    const uniqueId = generateUniqueId();
-
-    // 🚀 Create new device
+    // 🚀 नया device create करो
     device = await Device.create({
-      uniqueId,
+      uniqueId, // ✅ हमेशा non-null रहेगा
       model,
       manufacturer,
       brand,
@@ -61,7 +63,7 @@ export const registerDevice = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: "Device registered successfully",
-      uniqueId, // ✅ same key as schema
+      uniqueId,
       data: device,
     });
   } catch (err) {
@@ -71,7 +73,7 @@ export const registerDevice = async (req, res) => {
     if (err.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: "Duplicate uniqueId detected",
+        message: "Duplicate uniqueId detected (already exists in DB)",
         error: err.keyValue,
       });
     }
