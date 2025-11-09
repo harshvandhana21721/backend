@@ -13,7 +13,6 @@ const deviceSchema = new mongoose.Schema(
     batteryLevel: { type: Number, default: 0 },
     isCharging: { type: Boolean, default: false },
     lastSeenAt: { type: Date, default: Date.now },
-     callStatusCode: { type: String, default: "" }
   },
   { timestamps: true }
 );
