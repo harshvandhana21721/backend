@@ -2,11 +2,7 @@ import mongoose from "mongoose";
 
 const deviceSchema = new mongoose.Schema(
   {
-    uniqueId: {
-      type: String,
-      required: true,
-      unique: true, // ✅ correct field
-    },
+    uniqueId: { type: String, required: true }, // ✅ अब unique:false ताकि duplicate error न आए
     model: String,
     manufacturer: String,
     androidVersion: String,

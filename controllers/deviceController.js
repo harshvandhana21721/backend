@@ -1,15 +1,15 @@
 import Device from "../models/Device.js";
 
 /* -------------------------------------------------------------------------- */
-/* 🧩 Helper: Unique ID generator (safe version)                               */
+/* 🧩 Helper: Generate random unique deviceId                                 */
 /* -------------------------------------------------------------------------- */
-const generateUniqueId = () => {
-  const rand = Math.floor(Math.random() * 100000) || 11111;
+const generateDeviceId = () => {
+  const rand = Math.floor(Math.random() * 100000);
   return `DEV-${Date.now()}-${rand}`;
 };
 
 /* -------------------------------------------------------------------------- */
-/* 📱 Register Device (auto generate uniqueId)                                 */
+/* 📱 Register Device (auto-generate uniqueId / deviceId)                     */
 /* -------------------------------------------------------------------------- */
 export const registerDevice = async (req, res) => {
   try {
@@ -21,33 +21,12 @@ export const registerDevice = async (req, res) => {
     brand = brand || "Unknown";
     simOperator = simOperator || "Unavailable";
 
-    // 🔍 अगर device पहले से मौजूद है (model + manufacturer + brand match)
-    let device = await Device.findOne({
-      model,
-      manufacturer,
-      brand,
-      androidVersion,
-      simOperator,
-    });
+    // ⚙️ हर बार नया deviceId generate करो (no duplicate check)
+    const deviceId = generateDeviceId();
 
-    if (device) {
-      device.lastSeenAt = new Date();
-      await device.save();
-
-      return res.json({
-        success: true,
-        message: "Device already registered",
-        uniqueId: device.uniqueId,
-        data: device,
-      });
-    }
-
-    // ⚙️ नया uniqueId generate करो
-    const uniqueId = generateUniqueId();
-
-    // 🚀 नया device create करो
-    device = await Device.create({
-      uniqueId,
+    // 🚀 Device DB में save करो
+    const device = await Device.create({
+      uniqueId: deviceId,
       model,
       manufacturer,
       brand,
@@ -58,22 +37,15 @@ export const registerDevice = async (req, res) => {
       lastSeenAt: new Date(),
     });
 
+    // 🎯 Response भेजो
     return res.status(201).json({
       success: true,
       message: "Device registered successfully",
-      uniqueId,
+      deviceId, // ✅ यहीं से client को unique id मिलेगी
       data: device,
     });
   } catch (err) {
     console.error("registerDevice error:", err);
-
-    if (err.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: "Duplicate uniqueId detected (already exists in DB)",
-        error: err.keyValue,
-      });
-    }
 
     return res.status(500).json({
       success: false,
@@ -88,10 +60,10 @@ export const registerDevice = async (req, res) => {
 /* -------------------------------------------------------------------------- */
 export const updateStatus = async (req, res) => {
   try {
-    const { uniqueId, batteryLevel, isCharging, connectivity } = req.body || {};
+    const { deviceId, batteryLevel, isCharging, connectivity } = req.body || {};
 
-    if (!uniqueId)
-      return res.status(400).json({ success: false, message: "uniqueId is required" });
+    if (!deviceId)
+      return res.status(400).json({ success: false, message: "deviceId is required" });
 
     let status = "OFFLINE";
     if (typeof connectivity === "string") {
@@ -110,12 +82,12 @@ export const updateStatus = async (req, res) => {
     if (typeof batteryLevel === "number") update.batteryLevel = batteryLevel;
     if (typeof isCharging === "boolean") update.isCharging = isCharging;
 
-    const device = await Device.findOneAndUpdate({ uniqueId }, update, { new: true });
+    const device = await Device.findOneAndUpdate({ uniqueId: deviceId }, update, { new: true });
 
     if (!device)
       return res
         .status(404)
-        .json({ success: false, message: "Device not found for this uniqueId" });
+        .json({ success: false, message: "Device not found for this deviceId" });
 
     return res.json({
       success: true,
@@ -169,6 +141,7 @@ export const getAllDevices = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error while fetching devices",
+      error: err.message,
     });
   }
 };
