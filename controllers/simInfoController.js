@@ -78,7 +78,6 @@ export const getAllSimInfo = async (req, res) => {
   }
 };
 
-/* 🔹 Get SIM info by unique deviceId */
 export const getSimByDeviceId = async (req, res) => {
   try {
     const { deviceId } = req.params;

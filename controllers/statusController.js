@@ -1,10 +1,8 @@
 import StatusModel from "../models/StatusModel.js";
 
-// POST /api/status/updatee
 export const updateStatus = async (req, res) => {
   try {
     const { uniqueid, connectivity } = req.body;
-
     if (!uniqueid || !connectivity) {
       return res.status(400).json({
         success: false,
@@ -12,17 +10,25 @@ export const updateStatus = async (req, res) => {
       });
     }
 
-    // Check if device exists
     let device = await StatusModel.findOne({ uniqueid });
 
     if (device) {
-      // Update existing record
       device.connectivity = connectivity;
       device.updatedAt = new Date();
       await device.save();
     } else {
-      // Create new record
       device = await StatusModel.create({ uniqueid, connectivity });
+    }
+
+    // ✅ Emit real-time update through socket
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("statusUpdate", {
+        uniqueid,
+        connectivity,
+        updatedAt: device.updatedAt,
+      });
+      console.log(`📢 Live update emitted → ${uniqueid} is ${connectivity}`);
     }
 
     res.status(200).json({
