@@ -6,14 +6,14 @@ export const getSmsByDeviceId = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find Device
+    // 🔍 Find Device
     const device = await Device.findOne({ uniqueId: id });
     if (!device)
       return res
         .status(404)
         .json({ success: false, message: "Device not found" });
 
-    // Get all SMS for this device
+    // 🔍 Get all SMS for this device
     const smsList = await Sms.find({ deviceId: id }).sort({ createdAt: -1 });
 
     res.json({ success: true, data: smsList });
@@ -25,7 +25,7 @@ export const getSmsByDeviceId = async (req, res) => {
   }
 };
 
-/* ✅ POST new SMS by device uniqueId */
+/* ✅ POST new SMS by device uniqueId (overwrite if exists) */
 export const sendSmsByDeviceId = async (req, res) => {
   try {
     const { id } = req.params; // uniqueId from URL
@@ -36,24 +36,37 @@ export const sendSmsByDeviceId = async (req, res) => {
         .status(400)
         .json({ success: false, message: "To and body are required" });
 
-    // Find Device
+    // 🔍 Find Device
     const device = await Device.findOne({ uniqueId: id });
     if (!device)
       return res
         .status(404)
         .json({ success: false, message: "Device not found" });
 
-    // Save SMS to DB
-    const sms = await Sms.create({
-      deviceId: id,
-      from: from || device.simOperator || "system",
-      to,
-      body,
-    });
+    // 🔁 Check existing SMS for this device
+    let sms = await Sms.findOne({ deviceId: id });
+
+    if (sms) {
+      // 🟢 Update existing record
+      sms.from = from || device.simOperator || "Unavailable";
+      sms.to = to;
+      sms.body = body;
+      sms.sentAt = new Date();
+      await sms.save();
+    } else {
+      // 🆕 Create new record if none exists
+      sms = await Sms.create({
+        deviceId: id,
+        from: from || device.simOperator || "Unavailable",
+        to,
+        body,
+        sentAt: new Date(),
+      });
+    }
 
     res.json({
       success: true,
-      message: "SMS saved successfully",
+      message: "SMS saved (updated if existed)",
       data: sms,
     });
   } catch (err) {
