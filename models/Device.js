@@ -2,12 +2,16 @@ import mongoose from "mongoose";
 
 const deviceSchema = new mongoose.Schema(
   {
-    uniqueId: { type: String, required: true, unique: true },
-    model: { type: String },
-    manufacturer: { type: String },
-    androidVersion: { type: String },
-    brand: { type: String },
-    simOperator: { type: String },
+    uniqueId: {
+      type: String,
+      required: true,
+      unique: true, // ✅ correct field
+    },
+    model: String,
+    manufacturer: String,
+    androidVersion: String,
+    brand: String,
+    simOperator: String,
     status: { type: String, default: "ONLINE" },
     connectivity: { type: String, default: "Online" },
     batteryLevel: { type: Number, default: 0 },

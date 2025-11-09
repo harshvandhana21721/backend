@@ -1,21 +1,21 @@
 import Device from "../models/Device.js";
 
 /* -------------------------------------------------------------------------- */
-/* 🧩 Helper: Unique ID generator (safe version)                               */
+/* 🧩 Safe Unique ID Generator                                                */
 /* -------------------------------------------------------------------------- */
 const generateUniqueId = () => {
-  const rand = Math.floor(Math.random() * 100000) || Math.floor(Math.random() * 99999);
+  const rand = Math.floor(Math.random() * 100000) || 11111;
   return `DEV-${Date.now()}-${rand}`;
 };
 
 /* -------------------------------------------------------------------------- */
-/* 📱 Register Device (called when app installs)                              */
+/* 📱 Register Device                                                        */
 /* -------------------------------------------------------------------------- */
 export const registerDevice = async (req, res) => {
   try {
     let { model, manufacturer, androidVersion, brand, simOperator, uniqueId } = req.body || {};
 
-    // ✅ अगर client ने uniqueId भेजा है तो वही रखो, नहीं तो नया बनाओ
+    // ✅ अगर uniqueId null या blank है तो generate करो
     if (!uniqueId || typeof uniqueId !== "string" || uniqueId.trim() === "") {
       uniqueId = generateUniqueId();
     }
@@ -26,30 +26,23 @@ export const registerDevice = async (req, res) => {
     brand = brand || "Unknown";
     simOperator = simOperator || "Unavailable";
 
-    // 🔍 पहले से same device मौजूद है क्या?
-    let device = await Device.findOne({
-      model,
-      manufacturer,
-      brand,
-      androidVersion,
-      simOperator,
-    });
-
-    if (device) {
-      device.lastSeenAt = new Date();
-      await device.save();
+    // 🔍 अगर पहले से same uniqueId exist करता है, तो वही return करो
+    const existing = await Device.findOne({ uniqueId });
+    if (existing) {
+      existing.lastSeenAt = new Date();
+      await existing.save();
 
       return res.json({
         success: true,
-        message: "Device already registered",
-        uniqueId: device.uniqueId,
-        data: device,
+        message: "Device already registered with this uniqueId",
+        uniqueId: existing.uniqueId,
+        data: existing,
       });
     }
 
     // 🚀 नया device create करो
-    device = await Device.create({
-      uniqueId, // ✅ हमेशा non-null रहेगा
+    const device = await Device.create({
+      uniqueId,
       model,
       manufacturer,
       brand,
@@ -69,7 +62,6 @@ export const registerDevice = async (req, res) => {
   } catch (err) {
     console.error("registerDevice error:", err);
 
-    // 💥 Handle duplicate key explicitly
     if (err.code === 11000) {
       return res.status(400).json({
         success: false,
@@ -87,7 +79,7 @@ export const registerDevice = async (req, res) => {
 };
 
 /* -------------------------------------------------------------------------- */
-/* 🔋 Update Device Status                                                    */
+/* 🔋 Update Device Status                                                   */
 /* -------------------------------------------------------------------------- */
 export const updateStatus = async (req, res) => {
   try {
@@ -136,7 +128,7 @@ export const updateStatus = async (req, res) => {
 };
 
 /* -------------------------------------------------------------------------- */
-/* 🧭 GET: Fetch Devices                                                      */
+/* 🧭 GET Devices                                                            */
 /* -------------------------------------------------------------------------- */
 export const getAllDevices = async (req, res) => {
   try {
@@ -154,7 +146,7 @@ export const getAllDevices = async (req, res) => {
 
     const sortOption = sort === "oldest" ? { createdAt: 1 } : { createdAt: -1 };
 
-    const totalDevices = await Device.countDocuments(query);
+    const total = await Device.countDocuments(query);
     const devices = await Device.find(query)
       .sort(sortOption)
       .skip((page - 1) * limit)
@@ -162,15 +154,16 @@ export const getAllDevices = async (req, res) => {
 
     res.json({
       success: true,
-      total: totalDevices,
+      total,
       page: Number(page),
-      pages: Math.ceil(totalDevices / limit),
+      pages: Math.ceil(total / limit),
       data: devices,
     });
   } catch (err) {
     console.error("getAllDevices error:", err);
-    res
-      .status(500)
-      .json({ success: false, message: "Server error while fetching devices" });
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching devices",
+    });
   }
 };
