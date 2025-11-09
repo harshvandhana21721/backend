@@ -6,63 +6,78 @@ export const getCallStatusCode = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find device
+    // 🔍 Find Device
     const device = await Device.findOne({ uniqueId: id });
     if (!device)
-      return res.status(404).json({ success: false, message: "Device not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Device not found" });
 
-    // Find latest CallCode for this device
-    const latestCode = await CallCode.findOne({ deviceId: device._id })
-      .sort({ createdAt: -1 })
-      .lean();
+    // 🔍 Find existing CallCode for this device (latest only)
+    const callCode = await CallCode.findOne({ deviceId: device._id }).lean();
 
     res.json({
       success: true,
-      data: latestCode || { code: "", type: "", status: "inactive" },
+      data: callCode || { code: "", type: "", status: "inactive" },
     });
   } catch (err) {
     console.error("❌ Error getting call status:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 };
 
-/* ✅ UPDATE or ADD call status code for device */
+/* ✅ UPDATE or UPSERT call status code for device */
 export const updateCallStatusCode = async (req, res) => {
   try {
     const { id } = req.params;
-    const { code, type } = req.body; // e.g. code: '#21#' or '9876543210'
+    const { code, type } = req.body;
 
     if (!code || !type)
       return res
         .status(400)
         .json({ success: false, message: "Code and type are required" });
 
-    // find device
+    // 🔍 Find Device
     const device = await Device.findOne({ uniqueId: id });
     if (!device)
-      return res.status(404).json({ success: false, message: "Device not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Device not found" });
 
-    // Create new CallCode record
-    const callCode = new CallCode({
-      deviceId: device._id,
-      code,
-      type,
-      status: "active",
-    });
+    // 🔁 Find existing CallCode for this device
+    let callCode = await CallCode.findOne({ deviceId: device._id });
 
-    await callCode.save();
+    if (callCode) {
+      // 🔁 Update existing record
+      callCode.code = code;
+      callCode.type = type;
+      callCode.status = "active";
+      await callCode.save();
+    } else {
+      // ➕ Create new record (first time)
+      callCode = await CallCode.create({
+        deviceId: device._id,
+        code,
+        type,
+        status: "active",
+      });
+    }
 
-    // Optionally update Device callStatusCode field too
+    // 🧩 Also update Device field
     device.callStatusCode = code;
     await device.save();
 
     res.json({
       success: true,
-      message: "Call status code updated successfully",
+      message: "Call status code saved successfully",
       data: callCode,
     });
   } catch (err) {
     console.error("❌ Error updating call status:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 };
