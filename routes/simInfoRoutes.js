@@ -1,12 +1,14 @@
 import express from "express";
-import { saveSimInfo, getAllSimInfo } from "../controllers/simInfoController.js";
+import {
+  saveSimInfo,
+  getAllSimInfo,
+  getSimByDeviceId
+} from "../controllers/simInfoController.js";
 
 const router = express.Router();
 
-// 📨 Save SIM Info from Android
-router.post("/save", saveSimInfo);
-
-// 📋 Optional: Get all SIM info records
-router.get("/all", getAllSimInfo);
+router.post("/save", saveSimInfo);       // Save or update SIM info
+router.get("/list", getAllSimInfo);      // Get all SIMs
+router.get("/:deviceId", getSimByDeviceId); // Get by unique deviceId
 
 export default router;
