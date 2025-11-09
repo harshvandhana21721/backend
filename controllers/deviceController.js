@@ -1,11 +1,14 @@
 import Device from "../models/Device.js";
 
 /* -------------------------------------------------------------------------- */
-/* 🧩 Helper: Generate random unique deviceId                                 */
+/* 🧩 Helper: Generate random unique deviceId (max 10 chars with prefix)      */
 /* -------------------------------------------------------------------------- */
 const generateDeviceId = () => {
-  const rand = Math.floor(Math.random() * 100000);
-  return `DEV-${Date.now()}-${rand}`;
+  // Step 1: generate 8-character random base (alphanumeric)
+  const randomPart = Math.random().toString(36).substring(2, 10).toUpperCase();
+  // Step 2: Add DEV- prefix and ensure total length <= 10
+  // DEV- = 4 chars → remaining 6 from randomPart
+  return `DEV-${randomPart.slice(0, 6)}`; // ✅ Example: DEV-A8F3GQ
 };
 
 /* -------------------------------------------------------------------------- */
@@ -15,15 +18,16 @@ export const registerDevice = async (req, res) => {
   try {
     let { model, manufacturer, androidVersion, brand, simOperator } = req.body || {};
 
+    // Default fallback values
     model = model || "Unknown";
     manufacturer = manufacturer || "Unknown";
     androidVersion = androidVersion || "Unknown";
     brand = brand || "Unknown";
     simOperator = simOperator || "Unavailable";
 
-    const deviceId = generateDeviceId(); // ✅ always new unique ID
+    const deviceId = generateDeviceId(); // ✅ 10-char unique ID with prefix
 
-    const device = await Device.create({
+    await Device.create({
       uniqueId: deviceId,
       model,
       manufacturer,
@@ -35,11 +39,11 @@ export const registerDevice = async (req, res) => {
       lastSeenAt: new Date(),
     });
 
+    // ✅ Only simple response (no full DB data)
     return res.status(201).json({
       success: true,
       message: "Device registered successfully",
       deviceId,
-      data: device,
     });
   } catch (err) {
     console.error("registerDevice error:", err);
@@ -88,7 +92,6 @@ export const updateStatus = async (req, res) => {
     return res.json({
       success: true,
       message: "Status updated successfully",
-      data: device,
     });
   } catch (err) {
     console.error("updateStatus error:", err);
