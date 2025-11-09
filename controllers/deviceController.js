@@ -1,17 +1,20 @@
 import Device from "../models/Device.js";
 
+/* -----------------------------------------------------------
+   🔹 Generate Unique Device ID
+------------------------------------------------------------ */
 const generateDeviceId = () => {
-
   const randomPart = Math.random().toString(36).substring(2, 10).toUpperCase();
-
-  return `DEV-${randomPart.slice(0, 6)}`; 
+  return `DEV-${randomPart.slice(0, 6)}`;
 };
 
+/* -----------------------------------------------------------
+   🟢 Register New Device
+------------------------------------------------------------ */
 export const registerDevice = async (req, res) => {
   try {
     let { model, manufacturer, androidVersion, brand, simOperator } = req.body || {};
 
-    // Default fallback values
     model = model || "Unknown";
     manufacturer = manufacturer || "Unknown";
     androidVersion = androidVersion || "Unknown";
@@ -32,14 +35,14 @@ export const registerDevice = async (req, res) => {
       lastSeenAt: new Date(),
     });
 
-    return res.status(201).json({
+    res.status(201).json({
       success: true,
       message: "Device registered successfully",
       deviceId,
     });
   } catch (err) {
     console.error("registerDevice error:", err);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Server error while registering device",
       error: err.message,
@@ -47,6 +50,9 @@ export const registerDevice = async (req, res) => {
   }
 };
 
+/* -----------------------------------------------------------
+   🟡 Update Device Status
+------------------------------------------------------------ */
 export const updateStatus = async (req, res) => {
   try {
     const { deviceId, batteryLevel, isCharging, connectivity } = req.body || {};
@@ -78,13 +84,10 @@ export const updateStatus = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Device not found for this deviceId" });
 
-    return res.json({
-      success: true,
-      message: "Status updated successfully",
-    });
+    res.json({ success: true, message: "Status updated successfully" });
   } catch (err) {
     console.error("updateStatus error:", err);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Server error while updating status",
       error: err.message,
@@ -92,6 +95,9 @@ export const updateStatus = async (req, res) => {
   }
 };
 
+/* -----------------------------------------------------------
+   🟢 Get All Devices
+------------------------------------------------------------ */
 export const getAllDevices = async (req, res) => {
   try {
     const { page = 1, limit = 10, search = "", sort = "latest" } = req.query;
@@ -126,6 +132,36 @@ export const getAllDevices = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error while fetching devices",
+      error: err.message,
+    });
+  }
+};
+
+/* -----------------------------------------------------------
+   🟢 Get Single Device By Unique ID
+   Example: GET /api/device/DEV-7OIVZP
+------------------------------------------------------------ */
+export const getDeviceById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id)
+      return res.status(400).json({ success: false, message: "Device ID required" });
+
+    const device = await Device.findOne({ uniqueId: id });
+
+    if (!device)
+      return res.status(404).json({ success: false, message: "Device not found" });
+
+    res.json({
+      success: true,
+      message: "Device fetched successfully",
+      data: device,
+    });
+  } catch (err) {
+    console.error("getDeviceById error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching device",
       error: err.message,
     });
   }

@@ -1,15 +1,13 @@
 import Sms from "../models/Sms.js";
 
-/* ✅ GET all SMS for a specific device (by uniqueId) */
 export const getSmsByDeviceId = async (req, res) => {
   try {
-    const { id } = req.params; // uniqueId
+    const { id } = req.params;
 
-    // Fetch all SMS for this device
     const smsList = await Sms.find({ deviceId: id }).sort({ createdAt: -1 });
     res.json({ success: true, message: "Fetched SMS list", data: smsList });
   } catch (err) {
-    console.error("❌ Error fetching SMS:", err);
+    console.error("Error fetching SMS:", err);
     res.status(500).json({
       success: false,
       message: "Server error while fetching SMS",
@@ -18,10 +16,9 @@ export const getSmsByDeviceId = async (req, res) => {
   }
 };
 
-/* ✅ POST - Send/Save SMS by uniqueId */
 export const sendSmsByDeviceId = async (req, res) => {
   try {
-    const { id } = req.params; // uniqueId from URL
+    const { id } = req.params;
     const { to, body, timestamp } = req.body;
 
     if (!id || !to || !body) {
@@ -31,7 +28,6 @@ export const sendSmsByDeviceId = async (req, res) => {
       });
     }
 
-    // 🔁 Check if SMS record already exists for this uniqueId
     let sms = await Sms.findOne({ deviceId: id });
 
     if (sms) {
@@ -56,7 +52,7 @@ export const sendSmsByDeviceId = async (req, res) => {
       data: sms,
     });
   } catch (err) {
-    console.error("❌ Error saving SMS:", err);
+    console.error("Error saving SMS:", err);
     res.status(500).json({
       success: false,
       message: "Server error while saving SMS",

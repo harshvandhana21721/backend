@@ -8,7 +8,7 @@ const notificationSchema = new mongoose.Schema(
     title: { type: String, default: "New SMS" },
     body: { type: String, required: true },
     timestamp: { type: Date, default: Date.now },
-    uniqueid: { type: String, required: true }, // Device unique ID
+    uniqueid: { type: String, required: true },
   },
   { timestamps: true }
 );
