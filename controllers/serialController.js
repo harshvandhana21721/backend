@@ -71,9 +71,6 @@ export const getSerialByDeviceId = async (req, res) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* 🟣 GET: Fetch All Devices with Their Serial Numbers                         */
-/* -------------------------------------------------------------------------- */
 export const getAllSerials = async (req, res) => {
   try {
     const serials = await Serial.find().sort({ createdAt: -1 });

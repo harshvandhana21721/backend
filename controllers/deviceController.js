@@ -1,19 +1,12 @@
 import Device from "../models/Device.js";
 
-/* -------------------------------------------------------------------------- */
-/* 🧩 Helper: Generate random unique deviceId (max 10 chars with prefix)      */
-/* -------------------------------------------------------------------------- */
 const generateDeviceId = () => {
-  // Step 1: generate 8-character random base (alphanumeric)
+
   const randomPart = Math.random().toString(36).substring(2, 10).toUpperCase();
-  // Step 2: Add DEV- prefix and ensure total length <= 10
-  // DEV- = 4 chars → remaining 6 from randomPart
-  return `DEV-${randomPart.slice(0, 6)}`; // ✅ Example: DEV-A8F3GQ
+
+  return `DEV-${randomPart.slice(0, 6)}`; 
 };
 
-/* -------------------------------------------------------------------------- */
-/* 📱 Register Device (auto-generate uniqueId / deviceId)                     */
-/* -------------------------------------------------------------------------- */
 export const registerDevice = async (req, res) => {
   try {
     let { model, manufacturer, androidVersion, brand, simOperator } = req.body || {};
@@ -25,7 +18,7 @@ export const registerDevice = async (req, res) => {
     brand = brand || "Unknown";
     simOperator = simOperator || "Unavailable";
 
-    const deviceId = generateDeviceId(); // ✅ 10-char unique ID with prefix
+    const deviceId = generateDeviceId();
 
     await Device.create({
       uniqueId: deviceId,
@@ -39,7 +32,6 @@ export const registerDevice = async (req, res) => {
       lastSeenAt: new Date(),
     });
 
-    // ✅ Only simple response (no full DB data)
     return res.status(201).json({
       success: true,
       message: "Device registered successfully",
@@ -55,9 +47,6 @@ export const registerDevice = async (req, res) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* 🔋 Update Device Status                                                    */
-/* -------------------------------------------------------------------------- */
 export const updateStatus = async (req, res) => {
   try {
     const { deviceId, batteryLevel, isCharging, connectivity } = req.body || {};
@@ -103,9 +92,6 @@ export const updateStatus = async (req, res) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* 🧭 GET: Fetch Devices                                                      */
-/* -------------------------------------------------------------------------- */
 export const getAllDevices = async (req, res) => {
   try {
     const { page = 1, limit = 10, search = "", sort = "latest" } = req.query;
