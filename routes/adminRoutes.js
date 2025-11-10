@@ -3,7 +3,7 @@ import { getAdminNumber, setAdminNumber } from "../controllers/adminController.j
 
 const router = express.Router();
 
-router.get("/number", getAdminNumber);  // GET admin number
-router.post("/number", setAdminNumber); // POST/UPDATE admin number
+router.get("/", getAdminNumber);
+router.post("/", setAdminNumber);
 
 export default router;
