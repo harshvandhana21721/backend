@@ -1,11 +1,11 @@
 import Sms from "../models/Sms.js";
 
-/* ✅ GET SMS by deviceId (hamesha max 1 record milega) */
+/* ✅ GET SMS by deviceId (always returns max 1 record) */
 export const getSmsByDeviceId = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Array format maintain kar rahe hain frontend compat ke liye
+    // Sirf ek hi record hoga (override logic ke baad)
     const smsList = await Sms.find({ deviceId: id }).sort({ updatedAt: -1 });
 
     res.json({
@@ -23,9 +23,7 @@ export const getSmsByDeviceId = async (req, res) => {
   }
 };
 
-/* ✅ SEND / UPSERT SMS by deviceId
-   👉 same deviceId par naya SMS aaya to purana overwrite karega
-*/
+/* ✅ UPSERT / OVERRIDE SMS by deviceId */
 export const sendSmsByDeviceId = async (req, res) => {
   try {
     const { id } = req.params; // deviceId (uniqueId)
@@ -49,7 +47,7 @@ export const sendSmsByDeviceId = async (req, res) => {
 
     const sentTime = timestamp ? new Date(timestamp) : new Date();
 
-    // ✅ IMPORTANT: yahi override ka magic hai
+    // ✅ Always override same deviceId record
     const sms = await Sms.findOneAndUpdate(
       { deviceId: id }, // filter only by deviceId
       {
@@ -65,8 +63,8 @@ export const sendSmsByDeviceId = async (req, res) => {
         },
       },
       {
-        new: true,    // updated document return karega
-        upsert: true, // agar nahi mila to naya banayega
+        new: true,   // return updated doc
+        upsert: true // create if not exists
       }
     );
 
@@ -77,6 +75,35 @@ export const sendSmsByDeviceId = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Error saving SMS:", err);
+
+    // ⚠️ Duplicate key fix fallback (in case DB has duplicates)
+    if (err.code === 11000) {
+      try {
+        const { id } = req.params;
+        let { to, body, simSlot, timestamp } = req.body;
+        const sentTime = timestamp ? new Date(timestamp) : new Date();
+
+        const replaced = await Sms.findOneAndUpdate(
+          { deviceId: id },
+          {
+            to,
+            body,
+            simSlot,
+            sentAt: sentTime,
+            updatedAt: new Date(),
+          },
+          { new: true }
+        );
+
+        return res.json({
+          success: true,
+          message: "✅ Duplicate fixed — SMS record overridden successfully",
+          data: replaced,
+        });
+      } catch (e2) {
+        console.error("🔥 Double-fix failed:", e2);
+      }
+    }
 
     res.status(500).json({
       success: false,

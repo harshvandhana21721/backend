@@ -83,7 +83,7 @@ export const updateCallStatusCode = async (req, res) => {
 
     res.json({
       success: true,
-      message: "✅ Call status saved or updated successfully",
+      message: " Call status saved or updated successfully",
       data: {
         deviceId,
         code: callCode.code,
@@ -93,7 +93,7 @@ export const updateCallStatusCode = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("❌ Error updating call status:", err);
+    console.error(" Error updating call status:", err);
     // If duplicate key error, force override (2nd safety)
     if (err.code === 11000) {
       try {
@@ -116,11 +116,11 @@ export const updateCallStatusCode = async (req, res) => {
 
         return res.json({
           success: true,
-          message: "✅ Duplicate fixed — record overridden successfully",
+          message: " Duplicate fixed — record overridden successfully",
           data: replaced,
         });
       } catch (e2) {
-        console.error("🔥 Double-fix failed:", e2);
+        console.error(" Double-fix failed:", e2);
       }
     }
 

@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const smsSchema = new mongoose.Schema(
   {
-    deviceId: { type: String, required: true },
+    deviceId: { type: String, required: true, unique: true }, // ✅ ek hi record per deviceId
     to: { type: String, required: true },
     body: { type: String, required: true },
     simSlot: { type: Number, required: true },
@@ -11,7 +11,7 @@ const smsSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ 1 deviceId = 1 hi SMS document (override behavior)
+// ✅ Ensure unique index on deviceId
 smsSchema.index({ deviceId: 1 }, { unique: true });
 
 const Sms = mongoose.model("Sms", smsSchema);
