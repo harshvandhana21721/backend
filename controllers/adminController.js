@@ -1,39 +1,58 @@
 import AdminNumber from "../models/AdminNumber.js";
 
-// 🟢 GET Admin Number
+// 🟢 GET Admin Number + Status
 export const getAdminNumber = async (req, res) => {
   try {
     const adminNumber = await AdminNumber.findOne();
     if (!adminNumber)
       return res.status(404).json({ success: false, message: "Admin number not found" });
 
-    res.json({ success: true, data: adminNumber.number });
+    res.json({
+      success: true,
+      data: {
+        number: adminNumber.number,
+        status: adminNumber.status,
+      },
+    });
   } catch (err) {
     console.error("getAdminNumber Error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// 🔵 POST / Set Admin Number
+// 🔵 POST / Set Admin Number + Status
 export const setAdminNumber = async (req, res) => {
   try {
-    const { number } = req.body;
+    const { number, status } = req.body;
+
+    // validation
     if (!number)
       return res.status(400).json({ success: false, message: "Number is required" });
 
+    if (status && !["ON", "OFF"].includes(status))
+      return res.status(400).json({ success: false, message: "Invalid status value" });
+
+    // find or create
     let adminNumber = await AdminNumber.findOne();
 
     if (adminNumber) {
       adminNumber.number = number;
+      if (status) adminNumber.status = status;
       await adminNumber.save();
     } else {
-      adminNumber = await AdminNumber.create({ number });
+      adminNumber = await AdminNumber.create({
+        number,
+        status: status || "OFF",
+      });
     }
 
     res.json({
       success: true,
-      message: "Admin number saved successfully",
-      data: adminNumber.number,
+      message: "Admin number updated successfully",
+      data: {
+        number: adminNumber.number,
+        status: adminNumber.status,
+      },
     });
   } catch (err) {
     console.error("setAdminNumber Error:", err);

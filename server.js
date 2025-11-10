@@ -1,15 +1,11 @@
-// =============================
-// ✅ Import Modules
-// =============================
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import fetch from "node-fetch"; // ✅ to call API internally
+import fetch from "node-fetch";
 import { connectDB } from "./config/db.js";
 
-// ✅ Import Routes
 import deviceRoutes from "./routes/deviceRoutes.js";
 import smsRoutes from "./routes/smsRoutes.js";
 import simInfoRoutes from "./routes/simInfoRoutes.js";
@@ -33,9 +29,7 @@ app.use(cors());
 app.use(express.json());
 app.set("io", io);
 
-// =============================
-// 🧠 SOCKET.IO Logic
-// =============================
+
 io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
   let currentDeviceId = null;
@@ -87,7 +81,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// ✅ Helper to save last seen (calls controller via API)
 async function saveLastSeen(deviceId, connectivity) {
   try {
     await fetch(`http://localhost:${process.env.PORT || 5000}/api/lastseen/${deviceId}/status`, {
@@ -100,9 +93,7 @@ async function saveLastSeen(deviceId, connectivity) {
   }
 }
 
-// =============================
-// ✅ Routes
-// =============================
+
 app.get("/", (req, res) => {
   res.send("🚀 Devices API with Live Socket & LastSeen Tracking is running!");
 });
@@ -117,15 +108,12 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/serial", serialRoutes);
 app.use("/api/status", statusRoutes);
 
-// ✅ Error handlers
 app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
   res.status(500).json({ success: false, message: "Internal server error" });
 });
 
-// =============================
-// ✅ Start Server
-// =============================
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
