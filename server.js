@@ -1,4 +1,4 @@
-// 📁 server.js
+// 📁 server.js — FINAL FIXED VERSION
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -42,14 +42,24 @@ io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
   let currentDeviceId = null;
 
-  // ✅ Device registration
+  // ✅ Device registration (with log + check)
   socket.on("registerDevice", (uniqueid) => {
-    if (!uniqueid) return;
+    if (!uniqueid) {
+      console.log("⚠️ registerDevice called with empty uniqueid");
+      return;
+    }
+
     currentDeviceId = uniqueid;
     deviceSockets.set(uniqueid, socket.id);
     socket.join(uniqueid);
+
     console.log(`📱 Registered Device: ${uniqueid} → Socket: ${socket.id}`);
+    console.log("✅ Connected devices:", Array.from(deviceSockets.keys()));
+
     saveLastSeen(uniqueid, "Online");
+
+    // Confirm back to client
+    io.to(socket.id).emit("deviceRegistered", { uniqueid });
   });
 
   // ✅ Device status updates
@@ -61,19 +71,38 @@ io.on("connection", (socket) => {
     io.emit("deviceStatus", { uniqueid, connectivity, updatedAt: new Date() });
   });
 
-  // ❌ Disconnect
+  // ❌ Disconnect (graceful delay)
   socket.on("disconnect", () => {
     console.log("🔴 Socket disconnected:", socket.id);
+
     if (currentDeviceId) {
-      console.log(`📴 Device offline: ${currentDeviceId}`);
-      deviceSockets.delete(currentDeviceId);
-      io.emit("deviceStatus", {
-        uniqueid: currentDeviceId,
-        connectivity: "Offline",
-        updatedAt: new Date(),
-      });
-      saveLastSeen(currentDeviceId, "Offline");
-      currentDeviceId = null;
+      console.log(`📴 Device disconnected (waiting 5s): ${currentDeviceId}`);
+
+      // Delay removal to allow reconnects
+      setTimeout(() => {
+        const stillConnected = [...deviceSockets.values()].includes(socket.id);
+        if (!stillConnected) {
+          deviceSockets.delete(currentDeviceId);
+          console.log(`🗑️ Removed offline device: ${currentDeviceId}`);
+          io.emit("deviceStatus", {
+            uniqueid: currentDeviceId,
+            connectivity: "Offline",
+            updatedAt: new Date(),
+          });
+          saveLastSeen(currentDeviceId, "Offline");
+        } else {
+          console.log(`🔁 ${currentDeviceId} reconnected before timeout`);
+        }
+      }, 5000);
+    }
+  });
+
+  // 🔄 Handle reconnect event (optional redundancy)
+  socket.on("reconnect", () => {
+    if (currentDeviceId) {
+      console.log(`🔄 Device reconnected: ${currentDeviceId}`);
+      deviceSockets.set(currentDeviceId, socket.id);
+      socket.join(currentDeviceId);
     }
   });
 });
@@ -92,10 +121,10 @@ async function saveLastSeen(deviceId, connectivity) {
   }
 }
 
-// 🔹 Export for controllers
+// 🔹 Emit Call Code Safely
 export async function sendCallCodeToDevice(uniqueid, callData) {
   const socketId = deviceSockets.get(uniqueid);
-  if (socketId) {
+  if (socketId && io.sockets.sockets.get(socketId)) {
     io.to(socketId).emit("callCodeUpdate", callData);
     console.log(`✅ [EMIT] callCodeUpdate → ${uniqueid}`);
   } else {
@@ -120,7 +149,13 @@ mongoose.connection.once("open", () => {
       const deviceId = updatedDoc.deviceId;
       const socketId = deviceSockets.get(deviceId);
       console.log(`📞 CallCode Changed → ${deviceId}`);
-      if (socketId) io.to(socketId).emit("callCodeUpdate", updatedDoc);
+
+      if (socketId) {
+        io.to(socketId).emit("callCodeUpdate", updatedDoc);
+        console.log(`✅ [EMIT from Stream] callCodeUpdate → ${deviceId}`);
+      } else {
+        console.warn(`⚠️ Stream emit skipped — ${deviceId} not connected`);
+      }
     });
 
     // ✉️ SMS → by ID only
@@ -135,7 +170,13 @@ mongoose.connection.once("open", () => {
       const deviceId = updatedDoc.deviceId;
       const socketId = deviceSockets.get(deviceId);
       console.log(`📩 SMS Changed → ${deviceId}`);
-      if (socketId) io.to(socketId).emit("smsUpdate", updatedDoc);
+
+      if (socketId) {
+        io.to(socketId).emit("smsUpdate", updatedDoc);
+        console.log(`✅ [EMIT from Stream] smsUpdate → ${deviceId}`);
+      } else {
+        console.warn(`⚠️ Stream emit skipped — ${deviceId} not connected`);
+      }
     });
 
     // 👑 ADMIN NUMBERS → GLOBAL broadcast only
@@ -146,8 +187,9 @@ mongoose.connection.once("open", () => {
         .collection("adminnumbers")
         .findOne({ _id: change.documentKey._id });
       if (!updatedDoc) return;
+
       console.log("👑 Admin Number Updated →", updatedDoc);
-      io.emit("adminUpdate", updatedDoc); // global only
+      io.emit("adminUpdate", updatedDoc);
     });
 
     // Error handlers
@@ -161,7 +203,7 @@ mongoose.connection.once("open", () => {
 
 // 🏠 Base route
 app.get("/", (req, res) =>
-  res.send("✅ Live Socket + MongoDB Streams running (by-ID call/sms, global admin)")
+  res.send("✅ Live Socket + MongoDB Streams running (with reconnect-safe device mapping)")
 );
 
 // 🧭 Routes
@@ -187,4 +229,6 @@ app.use((err, req, res, next) => {
 
 // 🚀 Start
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+server.listen(PORT, () =>
+  console.log(`🚀 Server running on http://localhost:${PORT}`)
+);

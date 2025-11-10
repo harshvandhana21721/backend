@@ -1,67 +1,61 @@
-import CallForwardLog from "../models/CallForwardLog.js";
 import Device from "../models/Device.js";
+import CallCode from "../models/CallCode.js";
 import { sendCallCodeToDevice } from "../server.js";
 
-/* =========================================================
-   🧾 Get call forwarding history logs
-   ========================================================= */
-export const getCallForwardLogs = async (req, res) => {
+// Get call status by device uniqueId
+export const getCallStatusCode = async (req, res) => {
   try {
     const { id } = req.params;
     const device = await Device.findOne({ uniqueId: id });
-    if (!device)
+    if (!device) {
       return res.status(404).json({ success: false, message: "Device not found" });
-
-    const logs = await CallForwardLog.find({ deviceId: id })
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .lean();
-
-    res.json({ success: true, count: logs.length, data: logs });
+    }
+    const callCode = await CallCode.findOne({ deviceId: device.uniqueId }).lean();
+    res.json({
+      success: true,
+      data: callCode || { code: "", type: "", simSlot: null, status: "inactive" }
+    });
   } catch (err) {
-    console.error("💥 Error in getCallForwardLogs:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-/* =========================================================
-   🟢 Log call forwarding status (enabled / disabled)
-   ========================================================= */
-export const logCallForwardStatus = async (req, res) => {
+// Update call status + emit to device
+export const updateCallStatusCode = async (req, res) => {
   try {
     const { id } = req.params;
-    const { simSlot, status, actionBy } = req.body;
-
-    if (simSlot === undefined || !["enabled", "disabled"].includes(status))
-      return res
-        .status(400)
-        .json({ success: false, message: "simSlot and valid status required" });
-
+    let { code, type, simSlot } = req.body;
+    if (!code || !type || simSlot === undefined) {
+      return res.status(400).json({ success: false, message: "code, type, simSlot required" });
+    }
+    simSlot = Number(simSlot);
+    if (![0, 1].includes(simSlot)) {
+      return res.status(400).json({ success: false, message: "Invalid simSlot" });
+    }
     const device = await Device.findOne({ uniqueId: id });
-    if (!device)
+    if (!device) {
       return res.status(404).json({ success: false, message: "Device not found" });
+    }
+    const deviceId = device.uniqueId;
+    const callCode = await CallCode.findOneAndUpdate(
+      { deviceId },
+      { $set: { code, type, simSlot, status: "active", updatedAt: new Date() } },
+      { new: true, upsert: true }
+    );
+    device.callStatusCode = code;
+    await device.save();
 
-    const entry = new CallForwardLog({
-      deviceId: id,
+    // Emit real-time update
+    await sendCallCodeToDevice(deviceId, {
+      code,
+      type,
       simSlot,
-      status,
-      actionBy: actionBy || "user",
-    });
-    await entry.save();
-
-    // ✅ Emit live update to device dashboard
-    await sendCallCodeToDevice(id, {
-      simSlot,
-      status,
-      actionBy,
-      timestamp: entry.timestamp,
+      status: "active",
+      updatedAt: new Date()
     });
 
-    console.log(`🗂️ Logged ${status.toUpperCase()} for SIM${simSlot + 1} of ${id}`);
-
-    res.json({ success: true, message: "Log saved successfully", data: entry });
+    res.json({ success: true, message: "Call status updated", data: callCode });
   } catch (err) {
-    console.error("💥 Error in logCallForwardStatus:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
