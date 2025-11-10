@@ -9,7 +9,6 @@ const lastSeenSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ Ensure 1 device = 1 record
 lastSeenSchema.index({ deviceId: 1 }, { unique: true });
 
 export default mongoose.model("LastSeen", lastSeenSchema);
