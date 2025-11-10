@@ -80,7 +80,8 @@ export const getAllSimInfo = async (req, res) => {
 
 export const getSimByDeviceId = async (req, res) => {
   try {
-    const { deviceId } = req.params;
+    let { deviceId } = req.params;
+
     if (!deviceId) {
       return res.status(400).json({
         success: false,
@@ -88,10 +89,14 @@ export const getSimByDeviceId = async (req, res) => {
       });
     }
 
-    // ✅ Trim & normalize the deviceId (remove extra spaces)
-    const cleanId = deviceId.trim().toUpperCase();
+    // 🧹 Normalize the ID (remove spaces, uppercase, colon, etc.)
+    const cleanId = deviceId.trim().replace(/[:\s]+/g, "").toUpperCase();
 
-    const simData = await SimInfo.findOne({ deviceId: cleanId });
+    // 🔍 Case-insensitive search for better match
+    const simData = await SimInfo.findOne({
+      deviceId: { $regex: new RegExp(`^${cleanId}$`, "i") },
+    });
+
     if (!simData) {
       return res.status(404).json({
         success: false,
@@ -105,7 +110,7 @@ export const getSimByDeviceId = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ getSimByDeviceId error:", err);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Server error fetching SIM info",
     });
