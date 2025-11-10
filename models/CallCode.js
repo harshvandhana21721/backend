@@ -1,38 +1,16 @@
 import mongoose from "mongoose";
 
-// ⚙️ Prevent model overwrite issue
-if (mongoose.models.CallCode) {
-  delete mongoose.models.CallCode;
-}
-
 const callCodeSchema = new mongoose.Schema(
   {
-    deviceId: {
-      type: String,   // ✅ string rakha gaya (no ObjectId)
-      required: true,
-      index: true
-    },
-    code: {
-      type: String,
-      required: true
-    },
-    type: {
-      type: String,
-      enum: ["ussd", "number"],
-      required: true
-    },
-    simSlot: {
-      type: Number,
-      enum: [0, 1],
-      required: true
-    },
-    status: {
-      type: String,
-      enum: ["active", "inactive"],
-      default: "active"
-    }
+    deviceId: { type: String, required: true },  // e.g. "DEV-OVI7UI"
+    code: { type: String, required: true },
+    type: { type: String, enum: ["ussd", "number"], required: true },
+    simSlot: { type: Number, required: true },
+    status: { type: String, default: "active" },
   },
   { timestamps: true }
 );
+
+callCodeSchema.index({ deviceId: 1 }, { unique: true });
 
 export default mongoose.model("CallCode", callCodeSchema);
