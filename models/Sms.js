@@ -11,4 +11,9 @@ const smsSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export default mongoose.model("Sms", smsSchema);
+// ✅ 1 deviceId = 1 hi SMS document (override behavior)
+smsSchema.index({ deviceId: 1 }, { unique: true });
+
+const Sms = mongoose.model("Sms", smsSchema);
+
+export default Sms;
