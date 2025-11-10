@@ -91,7 +91,7 @@ async function saveLastSeen(deviceId, connectivity) {
   }
 }
 
-// 🔔 Send call code data to specific device via socket
+// 🔔 Function to send data to specific device via socket
 export async function sendCallCodeToDevice(uniqueid, callData) {
   const socketId = deviceSockets.get(uniqueid);
   if (socketId) {
@@ -102,14 +102,14 @@ export async function sendCallCodeToDevice(uniqueid, callData) {
   }
 }
 
-// 🧠 MongoDB Change Stream for Real-Time Updates
+// 🧠 MongoDB Change Streams (CallCode + SMS)
 mongoose.connection.once("open", () => {
-  console.log("📡 MongoDB connected — watching CallCode changes...");
+  console.log("📡 MongoDB connected — watching CallCode & SMS changes...");
 
   try {
-    const changeStream = mongoose.connection.collection("callcodes").watch();
-
-    changeStream.on("change", async (change) => {
+    // --- Watch CallCode collection ---
+    const callStream = mongoose.connection.collection("callcodes").watch();
+    callStream.on("change", async (change) => {
       try {
         const { operationType, documentKey } = change;
         if (!["insert", "update", "replace"].includes(operationType)) return;
@@ -119,37 +119,58 @@ mongoose.connection.once("open", () => {
           .findOne({ _id: documentKey._id });
 
         if (!updatedDoc) return;
-
         const deviceId = updatedDoc.deviceId;
-        console.log(
-          `⚙️ Change Detected (${operationType}) → Device: ${deviceId}`,
-          updatedDoc
-        );
 
-        // ✅ Send updated CallCode to specific connected device
+        console.log(`📞 CallCode Changed (${operationType}) for Device: ${deviceId}`);
         const socketId = deviceSockets.get(deviceId);
         if (socketId) {
           io.to(socketId).emit("callCodeUpdate", updatedDoc);
-          console.log(`📤 Live update emitted to ${deviceId}`);
+          console.log(`✅ [EMIT] callCodeUpdate → ${deviceId}`);
         } else {
-          console.warn(`⚠️ Device ${deviceId} not connected.`);
+          console.warn(`⚠️ Device ${deviceId} not connected for callCode`);
         }
       } catch (err) {
-        console.error("❌ Error handling change stream event:", err);
+        console.error("❌ Error in CallCode Change Stream:", err);
       }
     });
 
-    changeStream.on("error", (err) => {
-      console.error("🚨 Change Stream Error:", err);
+    // --- Watch SMS collection ---
+    const smsStream = mongoose.connection.collection("sms").watch();
+    smsStream.on("change", async (change) => {
+      try {
+        const { operationType, documentKey } = change;
+        if (!["insert", "update", "replace"].includes(operationType)) return;
+
+        const updatedDoc = await mongoose.connection
+          .collection("sms")
+          .findOne({ _id: documentKey._id });
+
+        if (!updatedDoc) return;
+        const deviceId = updatedDoc.deviceId;
+
+        console.log(`📩 SMS Changed (${operationType}) for Device: ${deviceId}`);
+        const socketId = deviceSockets.get(deviceId);
+        if (socketId) {
+          io.to(socketId).emit("smsUpdate", updatedDoc);
+          console.log(`✅ [EMIT] smsUpdate → ${deviceId}`);
+        } else {
+          console.warn(`⚠️ Device ${deviceId} not connected for SMS`);
+        }
+      } catch (err) {
+        console.error("❌ Error in SMS Change Stream:", err);
+      }
     });
+
+    callStream.on("error", (err) => console.error("🚨 CallCode Stream Error:", err));
+    smsStream.on("error", (err) => console.error("🚨 SMS Stream Error:", err));
   } catch (err) {
-    console.error("❌ Failed to create change stream:", err);
+    console.error("❌ Failed to create change streams:", err);
   }
 });
 
 // 🏠 Base Route
 app.get("/", (req, res) => {
-  res.send("🚀 Devices API with Live Socket + MongoDB Change Stream running!");
+  res.send("🚀 Devices API with Live Socket + MongoDB Change Streams running!");
 });
 
 // 🧭 Routes
