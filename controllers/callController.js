@@ -1,15 +1,14 @@
 import Device from "../models/Device.js";
 import CallCode from "../models/CallCode.js";
+import { sendCallCodeToDevice } from "../server.js";
 
-/* ✅ GET current call status by deviceId (uniqueId) */
+/* ✅ Get current call status by deviceId */
 export const getCallStatusCode = async (req, res) => {
   try {
     const { id } = req.params;
-
     const device = await Device.findOne({ uniqueId: id });
-    if (!device) {
+    if (!device)
       return res.status(404).json({ success: false, message: "Device not found" });
-    }
 
     const callCode = await CallCode.findOne({ deviceId: device.uniqueId }).lean();
 
@@ -19,115 +18,54 @@ export const getCallStatusCode = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Error getting call status:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server error while getting call status",
-      error: err.message,
-    });
+    res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };
 
-/* ✅ UPSERT / OVERRIDE per deviceId */
+/* ✅ Update or Insert call status */
 export const updateCallStatusCode = async (req, res) => {
   try {
     const { id } = req.params; // uniqueId
     let { code, type, simSlot } = req.body;
 
-    // Validation
-    if (!code || !type || simSlot === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: "code, type, and simSlot are required",
-      });
-    }
+    if (!code || !type || simSlot === undefined)
+      return res.status(400).json({ success: false, message: "code, type, simSlot required" });
 
     simSlot = Number(simSlot);
-    if (![0, 1].includes(simSlot)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid simSlot (must be 0 or 1)",
-      });
-    }
+    if (![0, 1].includes(simSlot))
+      return res.status(400).json({ success: false, message: "Invalid simSlot" });
 
     const device = await Device.findOne({ uniqueId: id });
-    if (!device) {
-      return res.status(404).json({
-        success: false,
-        message: "Device not found",
-      });
-    }
+    if (!device) return res.status(404).json({ success: false, message: "Device not found" });
 
     const deviceId = device.uniqueId;
 
-    // ✅ Always override existing record (no duplicate)
     const callCode = await CallCode.findOneAndUpdate(
       { deviceId },
-      {
-        $set: {
-          code,
-          type,
-          simSlot,
-          status: "active",
-          updatedAt: new Date(),
-        },
-        $setOnInsert: {
-          createdAt: new Date(),
-        },
-      },
+      { $set: { code, type, simSlot, status: "active", updatedAt: new Date() } },
       { new: true, upsert: true }
     );
 
-    // Optionally update Device model too
+    // Update device too
     device.callStatusCode = code;
     await device.save();
 
+    // ✅ Real-time emit to device
+    await sendCallCodeToDevice(deviceId, {
+      code,
+      type,
+      simSlot,
+      status: "active",
+      updatedAt: new Date(),
+    });
+
     res.json({
       success: true,
-      message: " Call status saved or updated successfully",
-      data: {
-        deviceId,
-        code: callCode.code,
-        type: callCode.type,
-        simSlot: callCode.simSlot,
-        status: callCode.status,
-      },
+      message: "Call status updated successfully",
+      data: callCode,
     });
   } catch (err) {
-    console.error(" Error updating call status:", err);
-    // If duplicate key error, force override (2nd safety)
-    if (err.code === 11000) {
-      try {
-        const { id } = req.params;
-        let { code, type, simSlot } = req.body;
-        const device = await Device.findOne({ uniqueId: id });
-        const deviceId = device.uniqueId;
-
-        const replaced = await CallCode.findOneAndUpdate(
-          { deviceId },
-          {
-            code,
-            type,
-            simSlot,
-            status: "active",
-            updatedAt: new Date(),
-          },
-          { new: true }
-        );
-
-        return res.json({
-          success: true,
-          message: " Duplicate fixed — record overridden successfully",
-          data: replaced,
-        });
-      } catch (e2) {
-        console.error(" Double-fix failed:", e2);
-      }
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Server error while updating call status",
-      error: err.message,
-    });
+    console.error("❌ Error updating call status:", err);
+    res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };

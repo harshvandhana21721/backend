@@ -59,7 +59,7 @@ export const setAdminNumber = async (req, res) => {
 
     res.json({
       success: true,
-      message: "✅ Admin number updated successfully",
+      message: "Admin number updated successfully",
       data: {
         number: adminNumber.number,
         status: adminNumber.status,
