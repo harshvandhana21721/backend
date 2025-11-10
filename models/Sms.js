@@ -1,14 +1,36 @@
 import mongoose from "mongoose";
 
+// ⚙️ Prevent model overwrite error
+if (mongoose.models.Sms) {
+  delete mongoose.models.Sms;
+}
+
 const smsSchema = new mongoose.Schema(
   {
-    deviceId: { type: String, required: true },  // Unique ID from Android
-    to: { type: String, required: true },        // Receiver number
-    body: { type: String, required: true },      // Message text only
-    sentAt: { type: Date, default: Date.now }    // Timestamp of SMS
+    deviceId: { 
+      type: String, 
+      required: true,
+      index: true,           // ✅ device uniqueId string
+    },
+    to: { 
+      type: String, 
+      required: true 
+    },        // Receiver number
+    body: { 
+      type: String, 
+      required: true 
+    },       // Message content
+    simSlot: { 
+      type: Number, 
+      enum: [0, 1], 
+      required: true 
+    },      // ✅ SIM slot info (0 or 1)
+    sentAt: { 
+      type: Date, 
+      default: Date.now 
+    }        // Timestamp of SMS
   },
   { timestamps: true }
 );
 
-// ✅ Prevent OverwriteModelError
-export default mongoose.models.Sms || mongoose.model("Sms", smsSchema);
+export default mongoose.model("Sms", smsSchema);
