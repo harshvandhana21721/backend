@@ -1,11 +1,9 @@
 import Sms from "../models/Sms.js";
 
-/* ✅ GET SMS by deviceId (always returns max 1 record) */
 export const getSmsByDeviceId = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Sirf ek hi record hoga (override logic ke baad)
     const smsList = await Sms.find({ deviceId: id }).sort({ updatedAt: -1 });
 
     res.json({
@@ -14,7 +12,7 @@ export const getSmsByDeviceId = async (req, res) => {
       data: smsList,
     });
   } catch (err) {
-    console.error("❌ Error fetching SMS:", err);
+    console.error(" Error fetching SMS:", err);
     res.status(500).json({
       success: false,
       message: "Server error while fetching SMS",
@@ -70,11 +68,11 @@ export const sendSmsByDeviceId = async (req, res) => {
 
     res.json({
       success: true,
-      message: "✅ SMS saved/updated successfully",
+      message: "SMS saved/updated successfully",
       data: sms,
     });
   } catch (err) {
-    console.error("❌ Error saving SMS:", err);
+    console.error("Error saving SMS:", err);
 
     // ⚠️ Duplicate key fix fallback (in case DB has duplicates)
     if (err.code === 11000) {
