@@ -1,10 +1,9 @@
 import Notification from "../models/Notification.js";
 
-/* ✅ POST /api/notification/receive
-   Save incoming SMS/notification from device */
+/* ✅ Receive and store incoming notifications */
 export const receiveNotification = async (req, res) => {
   try {
-    let {
+    const {
       sender,
       senderNumber,
       receiverNumber,
@@ -12,10 +11,9 @@ export const receiveNotification = async (req, res) => {
       body,
       timestamp,
       uniqueid,
-      simSlot,
     } = req.body;
 
-    // 🔍 Required fields
+    // 🧩 Validation
     if (!uniqueid || !receiverNumber || !body) {
       return res.status(400).json({
         success: false,
@@ -23,28 +21,15 @@ export const receiveNotification = async (req, res) => {
       });
     }
 
-    // 🔢 simSlot normalize (default 0 if not sent)
-    if (simSlot === undefined || simSlot === null || simSlot === "") {
-      simSlot = 0;
-    } else {
-      simSlot = Number(simSlot);
-      if (![0, 1].includes(simSlot)) {
-        return res.status(400).json({
-          success: false,
-          message: "simSlot must be 0 or 1",
-        });
-      }
-    }
-
+    // 🆕 Create and save new notification
     const notification = await Notification.create({
-      uniqueid,
       sender: sender || "Unavailable",
       senderNumber: senderNumber || "Unavailable",
       receiverNumber,
       title: title || "New SMS",
       body,
-      simSlot,
       timestamp: timestamp ? new Date(timestamp) : new Date(),
+      uniqueid,
     });
 
     res.status(201).json({
@@ -62,21 +47,14 @@ export const receiveNotification = async (req, res) => {
   }
 };
 
-/* ✅ GET /api/notification/all?limit=50
-   Get all notifications globally (latest first) */
+/* ✅ Get all notifications (for admin or list view) */
 export const getAllNotifications = async (req, res) => {
   try {
-    let { limit } = req.query;
-    limit = Number(limit) || 50;
-    if (limit > 200) limit = 200;
-
-    const notifications = await Notification.find()
-      .sort({ createdAt: -1 })
-      .limit(limit);
+    const notifications = await Notification.find().sort({ createdAt: -1 });
 
     res.json({
       success: true,
-      message: "Fetched all notifications ✅",
+      message: "Fetched all notifications successfully ✅",
       data: notifications,
     });
   } catch (err) {
@@ -89,23 +67,18 @@ export const getAllNotifications = async (req, res) => {
   }
 };
 
-/* ✅ GET /api/notification/:uniqueid?limit=3
-   Get latest notifications for specific device (by uniqueid) */
+/* ✅ Get notifications for a specific device by uniqueid */
 export const getNotificationsByDevice = async (req, res) => {
   try {
     const { uniqueid } = req.params;
-    let { limit } = req.query;
 
-    // default 3, max 50
-    limit = Math.min(Number(limit) || 3, 50);
-
-    const notifications = await Notification.find({ uniqueid })
-      .sort({ createdAt: -1 })
-      .limit(limit);
+    const notifications = await Notification.find({ uniqueid }).sort({
+      createdAt: -1,
+    });
 
     res.json({
       success: true,
-      message: `Fetched latest ${limit} notifications for device ✅`,
+      message: `Fetched notifications for device: ${uniqueid}`,
       data: notifications,
     });
   } catch (err) {
@@ -113,6 +86,30 @@ export const getNotificationsByDevice = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error while fetching device notifications",
+      error: err.message,
+    });
+  }
+};
+
+/* ✅ Get latest notification (for refresh or 'Get SMS' click) */
+export const getLatestNotificationByDevice = async (req, res) => {
+  try {
+    const { uniqueid } = req.params;
+
+    const latest = await Notification.find({ uniqueid })
+      .sort({ createdAt: -1 })
+      .limit(1);
+
+    res.json({
+      success: true,
+      message: "Fetched latest notification successfully ✅",
+      data: latest,
+    });
+  } catch (err) {
+    console.error("❌ Error fetching latest notification:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching latest notification",
       error: err.message,
     });
   }

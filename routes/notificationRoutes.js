@@ -3,17 +3,17 @@ import {
   receiveNotification,
   getAllNotifications,
   getNotificationsByDevice,
+  getLatestNotificationByDevice,
 } from "../controllers/notificationController.js";
 
 const router = express.Router();
-
-// 🔔 Device se aane wala notification (incoming SMS, etc.)
 router.post("/receive", receiveNotification);
 
-// 🔔 Sab notifications (for admin / logs)
+/* 🟢 Get all notifications (for admin view) */
 router.get("/all", getAllNotifications);
 
-// 🔔 Specific device ke notifications (by uniqueid)
 router.get("/:uniqueid", getNotificationsByDevice);
+
+router.get("/latest/:uniqueid", getLatestNotificationByDevice);
 
 export default router;
