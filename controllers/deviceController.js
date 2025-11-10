@@ -9,7 +9,7 @@ const generateDeviceId = () => {
 };
 
 /* -----------------------------------------------------------
-   🟢 Register New Device
+   🟢 Register New Device (No Duplicate)
 ------------------------------------------------------------ */
 export const registerDevice = async (req, res) => {
   try {
@@ -20,6 +20,16 @@ export const registerDevice = async (req, res) => {
     androidVersion = androidVersion || "Unknown";
     brand = brand || "Unknown";
     simOperator = simOperator || "Unavailable";
+
+    // 🔍 Check if device with same model + manufacturer already exists
+    const existing = await Device.findOne({ model, manufacturer });
+    if (existing) {
+      return res.status(200).json({
+        success: true,
+        message: "Device already registered",
+        deviceId: existing.uniqueId,
+      });
+    }
 
     const deviceId = generateDeviceId();
 
@@ -96,11 +106,11 @@ export const updateStatus = async (req, res) => {
 };
 
 /* -----------------------------------------------------------
-   🟢 Get All Devices
+   🟢 Get All Devices (NO LIMIT)
 ------------------------------------------------------------ */
 export const getAllDevices = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = "", sort = "latest" } = req.query;
+    const { search = "", sort = "latest" } = req.query;
 
     const query = {};
     if (search) {
@@ -114,17 +124,13 @@ export const getAllDevices = async (req, res) => {
 
     const sortOption = sort === "oldest" ? { createdAt: 1 } : { createdAt: -1 };
 
-    const total = await Device.countDocuments(query);
-    const devices = await Device.find(query)
-      .sort(sortOption)
-      .skip((page - 1) * limit)
-      .limit(Number(limit));
+    // 🔥 No pagination — fetch all devices at once
+    const devices = await Device.find(query).sort(sortOption);
+    const total = devices.length;
 
     res.json({
       success: true,
       total,
-      page: Number(page),
-      pages: Math.ceil(total / limit),
       data: devices,
     });
   } catch (err) {
@@ -139,7 +145,6 @@ export const getAllDevices = async (req, res) => {
 
 /* -----------------------------------------------------------
    🟢 Get Single Device By Unique ID
-   Example: GET /api/device/DEV-7OIVZP
 ------------------------------------------------------------ */
 export const getDeviceById = async (req, res) => {
   try {
