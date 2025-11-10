@@ -1,4 +1,4 @@
-// 📁 server.js — FINAL FIXED VERSION
+// 📁 server.js — FINAL STABLE VERSION
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -42,21 +42,21 @@ io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
   let currentDeviceId = null;
 
-  // ✅ Device registration (with cleanup)
+  // ✅ Device registration (with full cleanup + confirmation)
   socket.on("registerDevice", (uniqueid) => {
     if (!uniqueid) {
       console.log("⚠️ registerDevice called with empty uniqueid");
       return;
     }
 
-    // ♻️ Replace old connection if exists
+    // ♻️ Remove any existing old socket for same device
     if (deviceSockets.has(uniqueid)) {
       const oldSocketId = deviceSockets.get(uniqueid);
       if (io.sockets.sockets.get(oldSocketId)) {
         io.sockets.sockets.get(oldSocketId).disconnect(true);
+        console.log(`♻️ Old socket for ${uniqueid} disconnected`);
       }
       deviceSockets.delete(uniqueid);
-      console.log(`♻️ Replacing old socket for ${uniqueid}`);
     }
 
     currentDeviceId = uniqueid;
@@ -67,10 +67,13 @@ io.on("connection", (socket) => {
     console.log("✅ Connected devices:", Array.from(deviceSockets.keys()));
 
     saveLastSeen(uniqueid, "Online");
+
+    // 🔔 Confirm back to Android
     io.to(socket.id).emit("deviceRegistered", { uniqueid });
+    console.log(`🔔 Sent deviceRegistered → ${uniqueid}`);
   });
 
-  // ✅ Device status updates
+  // ✅ Device status updates (live emit to admin panel)
   socket.on("deviceStatus", (data) => {
     const { uniqueid, connectivity } = data || {};
     if (!uniqueid) return;
@@ -79,7 +82,7 @@ io.on("connection", (socket) => {
     io.emit("deviceStatus", { uniqueid, connectivity, updatedAt: new Date() });
   });
 
-  // ❌ Disconnect
+  // ❌ Disconnect with delayed cleanup (to allow reconnect)
   socket.on("disconnect", () => {
     console.log("🔴 Socket disconnected:", socket.id);
 
@@ -104,7 +107,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 🔄 Handle reconnect
+  // 🔄 Reconnect
   socket.on("reconnect", () => {
     if (currentDeviceId) {
       console.log(`🔄 Device reconnected: ${currentDeviceId}`);
@@ -141,7 +144,7 @@ export async function sendCallCodeToDevice(uniqueid, callData) {
 
 // 🧠 MongoDB Change Streams
 mongoose.connection.once("open", () => {
-  console.log("📡 MongoDB connected — Listening to callcodes, sms, adminnumbers...");
+  console.log("📡 MongoDB connected — Watching callcodes, sms, adminnumbers...");
 
   try {
     // 📞 CALLCODES
@@ -172,13 +175,13 @@ mongoose.connection.once("open", () => {
       const socketId = deviceSockets.get(deviceId);
       if (socketId && io.sockets.sockets.get(socketId)) {
         io.to(socketId).emit("smsUpdate", updatedDoc);
-        console.log(`✅ [EMIT from Stream] smsUpdate → ${deviceId}`);
+        console.log(`✅ [EMIT] smsUpdate → ${deviceId}`);
       } else {
-        console.warn(`⚠️ Stream emit skipped — ${deviceId} not connected`);
+        console.warn(`⚠️ SMS emit skipped — ${deviceId} not connected`);
       }
     });
 
-    // 👑 ADMIN NUMBERS → GLOBAL broadcast
+    // 👑 ADMIN NUMBERS (broadcast)
     const adminStream = mongoose.connection.collection("adminnumbers").watch();
     adminStream.on("change", async (change) => {
       if (!["insert", "update", "replace"].includes(change.operationType)) return;
@@ -190,7 +193,7 @@ mongoose.connection.once("open", () => {
       io.emit("adminUpdate", updatedDoc);
     });
 
-    // Error handlers
+    // 🧯 Error handling
     callStream.on("error", (err) => console.error("🚨 Call Stream Error:", err));
     smsStream.on("error", (err) => console.error("🚨 SMS Stream Error:", err));
     adminStream.on("error", (err) => console.error("🚨 Admin Stream Error:", err));
@@ -199,10 +202,10 @@ mongoose.connection.once("open", () => {
   }
 });
 
-// 🏠 Base route
-app.get("/", (req, res) =>
-  res.send("✅ Live Socket + MongoDB Streams running (multi-device & reconnect safe)")
-);
+// 🏠 Root route
+app.get("/", (req, res) => {
+  res.send("✅ Live Socket + MongoDB Streams running (Stable Multi-Device Backend)");
+});
 
 // 🧭 Routes
 app.use("/api/device", deviceRoutes);
