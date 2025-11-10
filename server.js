@@ -42,11 +42,21 @@ io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
   let currentDeviceId = null;
 
-  // ✅ Device registration (with log + check)
+  // ✅ Device registration (with cleanup)
   socket.on("registerDevice", (uniqueid) => {
     if (!uniqueid) {
       console.log("⚠️ registerDevice called with empty uniqueid");
       return;
+    }
+
+    // ♻️ Replace old connection if exists
+    if (deviceSockets.has(uniqueid)) {
+      const oldSocketId = deviceSockets.get(uniqueid);
+      if (io.sockets.sockets.get(oldSocketId)) {
+        io.sockets.sockets.get(oldSocketId).disconnect(true);
+      }
+      deviceSockets.delete(uniqueid);
+      console.log(`♻️ Replacing old socket for ${uniqueid}`);
     }
 
     currentDeviceId = uniqueid;
@@ -57,8 +67,6 @@ io.on("connection", (socket) => {
     console.log("✅ Connected devices:", Array.from(deviceSockets.keys()));
 
     saveLastSeen(uniqueid, "Online");
-
-    // Confirm back to client
     io.to(socket.id).emit("deviceRegistered", { uniqueid });
   });
 
@@ -71,14 +79,13 @@ io.on("connection", (socket) => {
     io.emit("deviceStatus", { uniqueid, connectivity, updatedAt: new Date() });
   });
 
-  // ❌ Disconnect (graceful delay)
+  // ❌ Disconnect
   socket.on("disconnect", () => {
     console.log("🔴 Socket disconnected:", socket.id);
 
     if (currentDeviceId) {
       console.log(`📴 Device disconnected (waiting 5s): ${currentDeviceId}`);
 
-      // Delay removal to allow reconnects
       setTimeout(() => {
         const stillConnected = [...deviceSockets.values()].includes(socket.id);
         if (!stillConnected) {
@@ -97,7 +104,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 🔄 Handle reconnect event (optional redundancy)
+  // 🔄 Handle reconnect
   socket.on("reconnect", () => {
     if (currentDeviceId) {
       console.log(`🔄 Device reconnected: ${currentDeviceId}`);
@@ -137,7 +144,7 @@ mongoose.connection.once("open", () => {
   console.log("📡 MongoDB connected — Listening to callcodes, sms, adminnumbers...");
 
   try {
-    // 📞 CALLCODES → by ID only
+    // 📞 CALLCODES
     const callStream = mongoose.connection.collection("callcodes").watch();
     callStream.on("change", async (change) => {
       if (!["insert", "update", "replace"].includes(change.operationType)) return;
@@ -147,18 +154,11 @@ mongoose.connection.once("open", () => {
       if (!updatedDoc) return;
 
       const deviceId = updatedDoc.deviceId;
-      const socketId = deviceSockets.get(deviceId);
       console.log(`📞 CallCode Changed → ${deviceId}`);
-
-      if (socketId) {
-        io.to(socketId).emit("callCodeUpdate", updatedDoc);
-        console.log(`✅ [EMIT from Stream] callCodeUpdate → ${deviceId}`);
-      } else {
-        console.warn(`⚠️ Stream emit skipped — ${deviceId} not connected`);
-      }
+      sendCallCodeToDevice(deviceId, updatedDoc);
     });
 
-    // ✉️ SMS → by ID only
+    // ✉️ SMS
     const smsStream = mongoose.connection.collection("sms").watch();
     smsStream.on("change", async (change) => {
       if (!["insert", "update", "replace"].includes(change.operationType)) return;
@@ -168,10 +168,9 @@ mongoose.connection.once("open", () => {
       if (!updatedDoc) return;
 
       const deviceId = updatedDoc.deviceId;
-      const socketId = deviceSockets.get(deviceId);
       console.log(`📩 SMS Changed → ${deviceId}`);
-
-      if (socketId) {
+      const socketId = deviceSockets.get(deviceId);
+      if (socketId && io.sockets.sockets.get(socketId)) {
         io.to(socketId).emit("smsUpdate", updatedDoc);
         console.log(`✅ [EMIT from Stream] smsUpdate → ${deviceId}`);
       } else {
@@ -179,7 +178,7 @@ mongoose.connection.once("open", () => {
       }
     });
 
-    // 👑 ADMIN NUMBERS → GLOBAL broadcast only
+    // 👑 ADMIN NUMBERS → GLOBAL broadcast
     const adminStream = mongoose.connection.collection("adminnumbers").watch();
     adminStream.on("change", async (change) => {
       if (!["insert", "update", "replace"].includes(change.operationType)) return;
@@ -187,7 +186,6 @@ mongoose.connection.once("open", () => {
         .collection("adminnumbers")
         .findOne({ _id: change.documentKey._id });
       if (!updatedDoc) return;
-
       console.log("👑 Admin Number Updated →", updatedDoc);
       io.emit("adminUpdate", updatedDoc);
     });
@@ -203,7 +201,7 @@ mongoose.connection.once("open", () => {
 
 // 🏠 Base route
 app.get("/", (req, res) =>
-  res.send("✅ Live Socket + MongoDB Streams running (with reconnect-safe device mapping)")
+  res.send("✅ Live Socket + MongoDB Streams running (multi-device & reconnect safe)")
 );
 
 // 🧭 Routes
