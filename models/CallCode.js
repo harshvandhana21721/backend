@@ -1,25 +1,26 @@
 import mongoose from "mongoose";
 
-const CallCodeSchema = new mongoose.Schema(
+const callCodeSchema = new mongoose.Schema(
   {
     deviceId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Device",
       required: true,
     },
-
     code: {
       type: String,
       required: true,
-      trim: true,
     },
-
     type: {
       type: String,
-      enum: ["number", "ussd"],
+      enum: ["ussd", "number"],
       required: true,
     },
-
+    simSlot: {
+      type: Number, // ✅ 0 or 1 (not string)
+      enum: [0, 1],
+      required: true,
+    },
     status: {
       type: String,
       enum: ["active", "inactive"],
@@ -29,5 +30,4 @@ const CallCodeSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-const CallCode = mongoose.model("CallCode", CallCodeSchema);
-export default CallCode;
+export default mongoose.model("CallCode", callCodeSchema);

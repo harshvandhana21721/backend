@@ -18,15 +18,10 @@ import adminRoutes from "./routes/adminRoutes.js";
 import serialRoutes from "./routes/serialRoutes.js";
 import statusRoutes from "./routes/statusRoutes.js";
 
-// =============================
-// ✅ Setup Environment & DB
-// =============================
 dotenv.config();
 connectDB();
 
-// =============================
-// ✅ App & Server Setup
-// =============================
+
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
@@ -40,11 +35,8 @@ app.use(cors());
 app.use(express.json());
 app.set("io", io);
 
-// =============================
-// ✅ SOCKET.IO REALTIME LOGIC
-// =============================
 io.on("connection", (socket) => {
-  console.log("🟢 Client connected:", socket.id);
+  console.log(" Client connected:", socket.id);
 
   let currentDeviceId = null;
 
@@ -67,9 +59,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log("🔴 Client disconnected:", socket.id);
+    console.log(" Client disconnected:", socket.id);
     if (currentDeviceId) {
-      console.log(`📴 Marking ${currentDeviceId} as Offline`);
+      console.log(` Marking ${currentDeviceId} as Offline`);
       io.emit("deviceStatus", {
         uniqueid: currentDeviceId,
         connectivity: "Offline",
@@ -80,9 +72,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// =============================
-// ✅ Base Route
-// =============================
 app.get("/", (req, res) => {
   res.send("Hello my brother — Devices API with Live Socket is running fine! ⚡");
 });
@@ -90,7 +79,7 @@ app.get("/", (req, res) => {
 
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
-app.use("/api/siminfo", simInfoRoutes); // ✅ keep only ONE sim route
+app.use("/api/siminfo", simInfoRoutes);
 app.use("/api/notification", notificationRoutes);
 app.use("/api/call", callRoutes);
 app.use("/api/admin", adminRoutes);
@@ -105,4 +94,4 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(` Server running on port ${PORT}`));
