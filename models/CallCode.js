@@ -1,10 +1,14 @@
 import mongoose from "mongoose";
 
+// ⚙️ Prevent model overwrite issue
+if (mongoose.models.CallCode) {
+  delete mongoose.models.CallCode;
+}
+
 const callCodeSchema = new mongoose.Schema(
   {
-    // ✅ string rakha gaya (ObjectId nahi)
     deviceId: {
-      type: String,
+      type: String,   // ✅ string rakha gaya (no ObjectId)
       required: true,
       index: true
     },
@@ -18,7 +22,7 @@ const callCodeSchema = new mongoose.Schema(
       required: true
     },
     simSlot: {
-      type: Number,          // ✅ 0 ya 1
+      type: Number,
       enum: [0, 1],
       required: true
     },
