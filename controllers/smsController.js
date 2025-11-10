@@ -1,6 +1,5 @@
 import Sms from "../models/Sms.js";
 
-/* ✅ GET SMS by Device Unique ID */
 export const getSmsByDeviceId = async (req, res) => {
   try {
     const { id } = req.params;
@@ -8,11 +7,11 @@ export const getSmsByDeviceId = async (req, res) => {
     const smsList = await Sms.find({ deviceId: id }).sort({ createdAt: -1 });
     res.json({
       success: true,
-      message: "Fetched SMS list successfully ✅",
+      message: "Fetched SMS list successfully",
       data: smsList,
     });
   } catch (err) {
-    console.error("❌ Error fetching SMS:", err);
+    console.error("Error fetching SMS:", err);
     res.status(500).json({
       success: false,
       message: "Server error while fetching SMS",

