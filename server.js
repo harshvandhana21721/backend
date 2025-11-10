@@ -16,6 +16,7 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import callRoutes from "./routes/callRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import serialRoutes from "./routes/serialRoutes.js";
+import callLogRoutes from "./routes/callLogRoutes.js";
 import statusRoutes from "./routes/statusRoutes.js";
 import lastSeenRoutes from "./routes/lastSeen.routes.js";
 
@@ -173,6 +174,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/serial", serialRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
+app.use("/api/call-log", callLogRoutes);
 
 // ❌ 404 & Error
 app.use((req, res) =>
