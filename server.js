@@ -49,6 +49,7 @@ io.on("connection", (socket) => {
     socket.join(uniqueid);
     console.log(`📱 Registered Device: ${uniqueid} → Socket: ${socket.id}`);
     saveLastSeen(uniqueid, "Online");
+    console.log("📡 Connected Devices:", Array.from(deviceSockets.keys()));
   });
 
   // ✅ Device pings
@@ -158,9 +159,11 @@ mongoose.connection.once("open", () => {
       if (!updatedDoc) return;
 
       console.log("👑 Admin Number Changed:", updatedDoc);
-      // Broadcast admin change to all connected devices
-      io.emit("adminUpdate", updatedDoc);
-      console.log("✅ [EMIT] adminUpdate → All devices");
+      console.log("📡 Emitting to", io.engine.clientsCount, "clients...");
+      setTimeout(() => {
+        io.sockets.emit("adminUpdate", updatedDoc);
+        console.log("✅ [EMIT] adminUpdate → All devices");
+      }, 500);
     });
 
     // Error handlers
