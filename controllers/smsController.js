@@ -1,5 +1,6 @@
 import Sms from "../models/Sms.js";
 
+/* ✅ GET all SMS by deviceId */
 export const getSmsByDeviceId = async (req, res) => {
   try {
     const { id } = req.params;
@@ -11,7 +12,7 @@ export const getSmsByDeviceId = async (req, res) => {
       data: smsList,
     });
   } catch (err) {
-    console.error("Error fetching SMS:", err);
+    console.error("❌ Error fetching SMS:", err);
     res.status(500).json({
       success: false,
       message: "Server error while fetching SMS",
@@ -34,7 +35,6 @@ export const sendSmsByDeviceId = async (req, res) => {
       });
     }
 
-    // Ensure simSlot is numeric (0 or 1)
     simSlot = Number(simSlot);
     if (![0, 1].includes(simSlot)) {
       return res.status(400).json({
@@ -43,30 +43,31 @@ export const sendSmsByDeviceId = async (req, res) => {
       });
     }
 
-    // 🔍 Check if SMS for same deviceId + simSlot exists
-    let sms = await Sms.findOne({ deviceId: id, simSlot });
+    // ✅ Overwrite old SMS if same deviceId + simSlot already exists
+    const sentTime = timestamp ? new Date(timestamp) : new Date();
 
-    if (sms) {
-      // 🟢 Update existing record
-      sms.to = to;
-      sms.body = body;
-      sms.sentAt = timestamp ? new Date(timestamp) : new Date();
-      sms.updatedAt = new Date();
-      await sms.save();
-    } else {
-      // 🆕 Create new record
-      sms = await Sms.create({
-        deviceId: id,
-        to,
-        body,
-        simSlot,
-        sentAt: timestamp ? new Date(timestamp) : new Date(),
-      });
-    }
+    const sms = await Sms.findOneAndUpdate(
+      { deviceId: id, simSlot },
+      {
+        $set: {
+          to,
+          body,
+          sentAt: sentTime,
+          updatedAt: new Date(),
+        },
+        $setOnInsert: {
+          createdAt: new Date(),
+        },
+      },
+      {
+        new: true, // return updated document
+        upsert: true, // create if not exists
+      }
+    );
 
     res.json({
       success: true,
-      message: "SMS saved successfully ✅",
+      message: "✅ SMS saved or updated successfully",
       data: {
         deviceId: sms.deviceId,
         to: sms.to,

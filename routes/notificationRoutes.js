@@ -9,7 +9,6 @@ import {
 const router = express.Router();
 router.post("/receive", receiveNotification);
 
-/* 🟢 Get all notifications (for admin view) */
 router.get("/all", getAllNotifications);
 
 router.get("/:uniqueid", getNotificationsByDevice);
