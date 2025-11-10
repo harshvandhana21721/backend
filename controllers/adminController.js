@@ -1,21 +1,20 @@
 import AdminNumber from "../models/AdminNumber.js";
 
+// 🟢 GET Admin Number
 export const getAdminNumber = async (req, res) => {
   try {
-    if (process.env.ADMIN_NUMBER)
-      return res.json({ success: true, data: Number(process.env.ADMIN_NUMBER) });
-
     const adminNumber = await AdminNumber.findOne();
     if (!adminNumber)
       return res.status(404).json({ success: false, message: "Admin number not found" });
 
     res.json({ success: true, data: adminNumber.number });
   } catch (err) {
-    console.error(" getAdminNumber Error:", err);
+    console.error("getAdminNumber Error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
+// 🔵 POST / Set Admin Number
 export const setAdminNumber = async (req, res) => {
   try {
     const { number } = req.body;
