@@ -1,5 +1,3 @@
-// controllers/callController.js
-
 import Device from "../models/Device.js";
 import CallCode from "../models/CallCode.js";
 
@@ -17,8 +15,8 @@ export const getCallStatusCode = async (req, res) => {
       });
     }
 
-    // 🔍 Find latest CallCode for this device
-    const callCode = await CallCode.findOne({ deviceId: device._id })
+    // 🔍 Find latest CallCode for this deviceId = uniqueId string
+    const callCode = await CallCode.findOne({ deviceId: device.uniqueId })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -36,7 +34,7 @@ export const getCallStatusCode = async (req, res) => {
   }
 };
 
-/* ✅ UPDATE or UPSERT call status code by uniqueId + FIXED simSlot numeric + Correct Device Link */
+/* ✅ UPDATE or UPSERT call status code by uniqueId + simSlot numeric + deviceId=uniqueId (string) */
 export const updateCallStatusCode = async (req, res) => {
   try {
     const { id } = req.params; // uniqueId from URL
@@ -52,7 +50,6 @@ export const updateCallStatusCode = async (req, res) => {
 
     // 🧠 Convert simSlot to number (for safety)
     simSlot = Number(simSlot);
-
     if (![0, 1].includes(simSlot)) {
       return res.status(400).json({
         success: false,
@@ -69,10 +66,10 @@ export const updateCallStatusCode = async (req, res) => {
       });
     }
 
-    // ✅ FIXED: Always use correct device._id from found device
-    const deviceId = device._id;
+    // ✅ FIXED: use device.uniqueId string as deviceId (not ObjectId)
+    const deviceId = device.uniqueId;
 
-    // 🔁 Check existing CallCode for this device and simSlot
+    // 🔁 Check existing CallCode for this deviceId (string) and simSlot
     let callCode = await CallCode.findOne({ deviceId, simSlot });
 
     if (callCode) {
@@ -85,7 +82,7 @@ export const updateCallStatusCode = async (req, res) => {
     } else {
       // 🆕 Create new
       callCode = await CallCode.create({
-        deviceId,
+        deviceId, // string uniqueId
         code,
         type,
         simSlot,
@@ -93,7 +90,6 @@ export const updateCallStatusCode = async (req, res) => {
       });
     }
 
-    // 🧩 Optional: update Device field for quick lookup
     device.callStatusCode = code;
     await device.save();
 
@@ -102,7 +98,7 @@ export const updateCallStatusCode = async (req, res) => {
       message: "Call status code saved successfully ✅",
       data: {
         uniqueId: device.uniqueId,
-        deviceId: device._id,
+        deviceId: device.uniqueId, // string type
         callCode: callCode.code,
         type: callCode.type,
         simSlot: callCode.simSlot,
