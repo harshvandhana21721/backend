@@ -4,8 +4,8 @@ import Sms from "../models/Sms.js";
 export const getSmsByDeviceId = async (req, res) => {
   try {
     const { id } = req.params;
-
     const smsList = await Sms.find({ deviceId: id }).sort({ createdAt: -1 });
+
     res.json({
       success: true,
       message: "Fetched SMS list successfully",
@@ -21,13 +21,11 @@ export const getSmsByDeviceId = async (req, res) => {
   }
 };
 
-/* ✅ SEND (UPSERT) SMS by Device Unique ID + simSlot */
 export const sendSmsByDeviceId = async (req, res) => {
   try {
-    const { id } = req.params; // Device uniqueId from URL
+    const { id } = req.params; 
     let { to, body, simSlot, timestamp } = req.body;
 
-    // 🧩 Validation
     if (!id || !to || !body || simSlot === undefined) {
       return res.status(400).json({
         success: false,
@@ -43,41 +41,23 @@ export const sendSmsByDeviceId = async (req, res) => {
       });
     }
 
-    // ✅ Overwrite old SMS if same deviceId + simSlot already exists
-    const sentTime = timestamp ? new Date(timestamp) : new Date();
+    const sms = new Sms({
+      deviceId: id,
+      to,
+      body,
+      simSlot,
+      sentAt: timestamp ? new Date(timestamp) : new Date(),
+    });
 
-    const sms = await Sms.findOneAndUpdate(
-      { deviceId: id, simSlot },
-      {
-        $set: {
-          to,
-          body,
-          sentAt: sentTime,
-          updatedAt: new Date(),
-        },
-        $setOnInsert: {
-          createdAt: new Date(),
-        },
-      },
-      {
-        new: true, // return updated document
-        upsert: true, // create if not exists
-      }
-    );
+    await sms.save();
 
     res.json({
       success: true,
-      message: "✅ SMS saved or updated successfully",
-      data: {
-        deviceId: sms.deviceId,
-        to: sms.to,
-        body: sms.body,
-        simSlot: sms.simSlot,
-        sentAt: sms.sentAt,
-      },
+      message: "SMS saved successfully",
+      data: sms,
     });
   } catch (err) {
-    console.error("❌ Error saving SMS:", err);
+    console.error("Error saving SMS:", err);
     res.status(500).json({
       success: false,
       message: "Server error while saving SMS",

@@ -11,6 +11,4 @@ const smsSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-smsSchema.index({ deviceId: 1, simSlot: 1 }, { unique: true });
-
 export default mongoose.model("Sms", smsSchema);
