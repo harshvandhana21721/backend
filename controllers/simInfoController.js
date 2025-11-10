@@ -84,21 +84,30 @@ export const getSimByDeviceId = async (req, res) => {
     if (!deviceId) {
       return res.status(400).json({
         success: false,
-        message: "deviceId is required"
+        message: "deviceId is required",
       });
     }
 
-    const simData = await SimInfo.findOne({ deviceId });
+    // ✅ Trim & normalize the deviceId (remove extra spaces)
+    const cleanId = deviceId.trim().toUpperCase();
+
+    const simData = await SimInfo.findOne({ deviceId: cleanId });
     if (!simData) {
       return res.status(404).json({
         success: false,
-        message: "No SIM info found for this device"
+        message: `No SIM info found for deviceId: ${cleanId}`,
       });
     }
 
-    res.json({ success: true, data: simData });
+    return res.json({
+      success: true,
+      data: simData,
+    });
   } catch (err) {
-    console.error("getSimByDeviceId error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("❌ getSimByDeviceId error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching SIM info",
+    });
   }
 };

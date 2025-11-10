@@ -87,9 +87,7 @@ app.get("/", (req, res) => {
   res.send("Hello my brother — Devices API with Live Socket is running fine! ⚡");
 });
 
-// =============================
-// ✅ API Routes
-// =============================
+
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/siminfo", simInfoRoutes); // ✅ keep only ONE sim route
@@ -99,9 +97,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/serial", serialRoutes);
 app.use("/api/status", statusRoutes);
 
-// =============================
-// ✅ Error Handlers
-// =============================
+
 app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
