@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const callCodeSchema = new mongoose.Schema(
   {
-    deviceId: { type: String, required: true, unique: true }, // ✅ unique index
+    deviceId: { type: String, required: true, unique: true }, // ✅ one record per deviceId
     code: { type: String, required: true },
     type: { type: String, enum: ["ussd", "number"], required: true },
     simSlot: { type: Number, required: true },
@@ -10,5 +10,8 @@ const callCodeSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ✅ Unique index ensure karo
+callCodeSchema.index({ deviceId: 1 }, { unique: true });
 
 export default mongoose.model("CallCode", callCodeSchema);
