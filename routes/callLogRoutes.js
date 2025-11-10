@@ -6,10 +6,10 @@ import {
 
 const router = express.Router();
 
-// 🔹 POST → Log status (enable/disable) for SIM1/SIM2
+// 🔹 POST → log status
 router.post("/:id/log", logCallForwardStatus);
 
-// 🔹 GET → Fetch recent history logs
+// 🔹 GET → fetch logs
 router.get("/:id/logs", getCallForwardLogs);
 
 export default router;
