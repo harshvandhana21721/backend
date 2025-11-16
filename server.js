@@ -39,14 +39,19 @@ app.use(
 app.use(express.json());
 app.set("io", io);
 
-// deviceId -> socketId
+// ===================================================
+//  deviceId -> socketId  (ye hi main mapping hai)
+// ===================================================
 const deviceSockets = new Map();
+
+// (OPTIONAL) socketId -> deviceId (sirf debug ke liye handy)
+const socketDevices = new Map();
 
 // ---------- helper: normalize deviceId from client payload ----------
 function extractDeviceId(raw) {
   if (!raw) return null;
 
-  if (typeof raw === "string") return raw;
+  if (typeof raw === "string") return raw.trim();
 
   // object case
   return (
@@ -58,11 +63,24 @@ function extractDeviceId(raw) {
   );
 }
 
+// 🔹 Debug helper: pura map print karne ke liye
+function logSocketMaps(prefix = "") {
+  const devToSock = Array.from(deviceSockets.entries());
+  console.log(
+    `🧾 ${prefix} Current deviceSockets (deviceId -> socketId):`,
+    devToSock
+  );
+}
+
 // 🔹 Save Last Seen (DB API ko call)
 async function saveLastSeen(deviceId, connectivity) {
   if (!deviceId) return;
   try {
     const PORT = process.env.PORT || 5000;
+
+    console.log(
+      `🕒 saveLastSeen → deviceId=${deviceId}, connectivity=${connectivity}`
+    );
 
     await fetch(`http://localhost:${PORT}/api/lastseen/${deviceId}/status`, {
       method: "POST",
@@ -76,23 +94,34 @@ async function saveLastSeen(deviceId, connectivity) {
 
 // 🔹 Emit Call Code Safely (exported – routes me use hoga)
 export async function sendCallCodeToDevice(deviceId, callData) {
-  if (!deviceId) return;
+  if (!deviceId) {
+    console.log("⚠️ sendCallCodeToDevice called without deviceId");
+    return;
+  }
 
   const socketId = deviceSockets.get(deviceId);
   const liveSocket = socketId && io.sockets.sockets.get(socketId);
 
+  console.log(
+    `📤 sendCallCodeToDevice → deviceId=${deviceId}, socketId=${socketId || "N/A"}`
+  );
+
   if (liveSocket) {
     liveSocket.emit("callCodeUpdate", callData);
-    console.log(`✅ [EMIT] callCodeUpdate → ${deviceId}`);
+    console.log(
+      `✅ [EMIT] callCodeUpdate → deviceId=${deviceId}, socketId=${liveSocket.id}`
+    );
   } else {
-    console.log(`⚠️ No active socket for ${deviceId} to send callCodeUpdate`);
+    console.log(
+      `⚠️ No active socket for deviceId=${deviceId} to send callCodeUpdate`
+    );
   }
 }
 
 // ================= SOCKET: CONNECTION HANDLER =================
 
 io.on("connection", (socket) => {
-  console.log("🟢 Client connected:", socket.id);
+  console.log("🟢 Client connected (no device yet): socketId =", socket.id);
 
   // is connection ke sath kaun sa deviceId map hai
   let currentDeviceId = null;
@@ -105,22 +134,36 @@ io.on("connection", (socket) => {
       return;
     }
 
+    console.log(
+      `📡 registerDevice received → deviceId=${deviceId}, socketId=${socket.id}, rawPayload=`,
+      payload
+    );
+
     // same deviceId ka koi purana socket hai to disconnect
     if (deviceSockets.has(deviceId)) {
       const oldSocketId = deviceSockets.get(deviceId);
       const oldSocket = io.sockets.sockets.get(oldSocketId);
+
+      console.log(
+        `♻️ DeviceId=${deviceId} pe pehle se socket mapped tha: oldSocketId=${oldSocketId}, newSocketId=${socket.id}`
+      );
+
       if (oldSocket && oldSocket.id !== socket.id) {
+        console.log(`♻️ Disconnecting old socket for deviceId=${deviceId}`);
         oldSocket.disconnect(true);
-        console.log(`♻️ Old socket for ${deviceId} disconnected`);
       }
       deviceSockets.delete(deviceId);
     }
 
     currentDeviceId = deviceId;
     deviceSockets.set(deviceId, socket.id);
+    socketDevices.set(socket.id, deviceId);
     socket.join(deviceId);
 
-    console.log(`📱 Registered Device: ${deviceId} (socket: ${socket.id})`);
+    console.log(
+      `📱 Registered Device: deviceId=${deviceId}, socketId=${socket.id}`
+    );
+    logSocketMaps("After registerDevice");
 
     await saveLastSeen(deviceId, "Online");
 
@@ -147,8 +190,12 @@ io.on("connection", (socket) => {
       );
 
       if (lastCode) {
-        console.log(`📞 Sending latest CallCode on connect → ${deviceId}`);
+        console.log(
+          `📞 Sending latest CallCode on connect → deviceId=${deviceId}, socketId=${socket.id}`
+        );
         socket.emit("callCodeUpdate", lastCode);
+      } else {
+        console.log(`ℹ️ No previous CallCode found for deviceId=${deviceId}`);
       }
     } catch (err) {
       console.error("❌ Error sending last callcode on register:", err);
@@ -157,14 +204,27 @@ io.on("connection", (socket) => {
 
   // ---------- DEVICE STATUS PING (Android se) ----------
   socket.on("deviceStatus", (data) => {
-    const deviceId =
-      extractDeviceId(data?.deviceId || data?.uniqueid || data?.uniqueId) ||
-      currentDeviceId;
+    // Kuch clients sirf deviceId string bhejenge, kuch object
+    const rawDevice =
+      data?.deviceId || data?.uniqueid || data?.uniqueId || data;
+    const deviceId = extractDeviceId(rawDevice) || currentDeviceId;
 
     const connectivity = data?.connectivity;
-    if (!deviceId || !connectivity) return;
+    if (!deviceId || !connectivity) {
+      console.log(
+        "⚠️ deviceStatus event invalid → data=",
+        data,
+        ", resolvedDeviceId=",
+        deviceId,
+        ", connectivity=",
+        connectivity
+      );
+      return;
+    }
 
-    console.log(`⚡ DeviceStatus → ${deviceId}: ${connectivity}`);
+    console.log(
+      `⚡ deviceStatus → deviceId=${deviceId}, socketId=${socket.id}, connectivity=${connectivity}`
+    );
 
     saveLastSeen(deviceId, connectivity);
 
@@ -183,32 +243,43 @@ io.on("connection", (socket) => {
 
   // ---------- DISCONNECT ----------
   socket.on("disconnect", () => {
-    console.log("🔴 Socket disconnected:", socket.id);
+    const mappedDeviceId = currentDeviceId || socketDevices.get(socket.id);
+    console.log(
+      `🔴 Socket disconnected: socketId=${socket.id}, deviceId=${mappedDeviceId || "UNKNOWN"}`
+    );
 
-    if (!currentDeviceId) return;
+    if (!mappedDeviceId) return;
 
     // thoda wait – shayad device ne reconnect kar liya ho
     setTimeout(async () => {
-      const storedSocketId = deviceSockets.get(currentDeviceId);
+      const storedSocketId = deviceSockets.get(mappedDeviceId);
 
       // agar map me ab bhi **yehi** socket id hai → ab koi active connection nahi
       if (!storedSocketId || storedSocketId === socket.id) {
-        deviceSockets.delete(currentDeviceId);
+        deviceSockets.delete(mappedDeviceId);
+        socketDevices.delete(socket.id);
 
-        console.log(`📵 Device disconnected fully → ${currentDeviceId}`);
+        console.log(
+          `📵 Device disconnected fully → deviceId=${mappedDeviceId}, lastSocketId=${socket.id}`
+        );
+        logSocketMaps("After disconnect");
 
-        await saveLastSeen(currentDeviceId, "Offline");
+        await saveLastSeen(mappedDeviceId, "Offline");
 
         io.emit("deviceStatus", {
-          deviceId: currentDeviceId,
+          deviceId: mappedDeviceId,
           connectivity: "Offline",
           updatedAt: new Date(),
         });
 
         io.emit("deviceListUpdated", {
           event: "device_disconnected",
-          deviceId: currentDeviceId,
+          deviceId: mappedDeviceId,
         });
+      } else {
+        console.log(
+          `🔁 New socket already registered for deviceId=${mappedDeviceId}, currentMappedSocketId=${storedSocketId}, oldDisconnectedSocketId=${socket.id}`
+        );
       }
     }, 5000);
   });
@@ -231,7 +302,9 @@ mongoose.connection.once("open", () => {
         .findOne({ _id: change.documentKey._id });
 
       if (updatedDevice) {
-        console.log(`📡 Device Change → ${updatedDevice.uniqueId}`);
+        console.log(
+          `📡 Device Change → uniqueId=${updatedDevice.uniqueId}, deviceId=${updatedDevice.deviceId || "N/A"}`
+        );
         io.emit("deviceListUpdated", {
           event: "db_change",
           device: updatedDevice,
@@ -250,7 +323,9 @@ mongoose.connection.once("open", () => {
         .findOne({ _id: change.documentKey._id });
 
       if (updatedSim) {
-        console.log(`📶 SIM Change → ${updatedSim.deviceId}`);
+        console.log(
+          `📶 SIM Change → deviceId=${updatedSim.deviceId}, simSlot=${updatedSim.simSlot || "N/A"}`
+        );
         io.emit("simInfoUpdated", {
           event: "sim_change",
           sim: updatedSim,
@@ -269,7 +344,9 @@ mongoose.connection.once("open", () => {
       if (!updatedDoc) return;
 
       const deviceId = updatedDoc.deviceId;
-      console.log(`📞 CallCode Changed → ${deviceId}`);
+      console.log(
+        `📞 CallCode Changed → deviceId=${deviceId}, _id=${updatedDoc._id}`
+      );
       sendCallCodeToDevice(deviceId, updatedDoc);
     });
 
@@ -284,13 +361,22 @@ mongoose.connection.once("open", () => {
       if (!updatedDoc) return;
 
       const deviceId = updatedDoc.deviceId;
-      console.log(`📩 SMS Changed → ${deviceId}`);
+      console.log(
+        `📩 SMS Changed → deviceId=${deviceId}, _id=${updatedDoc._id}`
+      );
 
       const socketId = deviceSockets.get(deviceId);
       const liveSocket = socketId && io.sockets.sockets.get(socketId);
 
       if (liveSocket) {
+        console.log(
+          `📩 [EMIT] smsUpdate → deviceId=${deviceId}, socketId=${socketId}`
+        );
         liveSocket.emit("smsUpdate", updatedDoc);
+      } else {
+        console.log(
+          `⚠️ No active socket for deviceId=${deviceId} to send smsUpdate`
+        );
       }
     });
   } catch (err) {
@@ -323,9 +409,7 @@ app.use((req, res) =>
 // Error handler
 app.use((err, req, res, next) => {
   console.error("💥 Unhandled error:", err);
-  res
-    .status(500)
-    .json({ success: false, message: "Internal server error" });
+  res.status(500).json({ success: false, message: "Internal server error" });
 });
 
 // ===================== START SERVER =====================
