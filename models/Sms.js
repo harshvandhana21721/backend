@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const smsSchema = new mongoose.Schema(
   {
-    uniqueid: { type: String, required: true }, 
+    uniqueid: { type: String, required: true },
     to: { type: String, required: true },
     body: { type: String, required: true },
     simSlot: { type: Number, required: true },
