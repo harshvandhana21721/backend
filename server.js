@@ -44,8 +44,12 @@ const deviceSockets = new Map();
 // =================================================
 
 io.on("connection", (socket) => {
+  // 👉 deviceId header + query dono se support
   const deviceIdFromQuery = socket.handshake?.query?.deviceId;
-  console.log("🟢 Client connected:", deviceIdFromQuery || socket.id);
+  const deviceIdFromHeader = socket.handshake?.headers?.deviceid;
+  const displayId = deviceIdFromHeader || deviceIdFromQuery || socket.id;
+
+  console.log("🟢 Client connected:", displayId);
 
   let currentDeviceId = null;
 
@@ -251,9 +255,6 @@ mongoose.connection.once("open", () => {
     });
 });
 
-// =================================================
-// =============== EXPRESS ROUTES ==================
-// =================================================
 
 app.get("/", (req, res) => {
   res.send("Server Running with Sockets + Mongo Streams");
