@@ -24,17 +24,11 @@ connectDB();
 const app = express();
 const server = createServer(app);
 
-// ⭐ IMPORTANT: Socket.io with long timeouts (fix random disconnects)
+// ⭐ Socket.io with long timeouts (random disconnect fix)
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
-
-  // 👉 Ping every 25s
   pingInterval: 25000,
-
-  // 👉 Client has 60s to respond (slow networks / background device safe)
   pingTimeout: 60000,
-
-  // 👉 Wait up to 60s for initial connection
   connectTimeout: 60000,
 });
 
@@ -43,7 +37,6 @@ app.use(express.json());
 app.set("io", io);
 
 // =============== DEVICE SOCKET MAP ===============
-
 const deviceSockets = new Map();
 
 // =================================================
@@ -69,7 +62,6 @@ io.on("connection", (socket) => {
       if (oldSocketId && oldSocketId !== socket.id) {
         const oldSocket = io.sockets.sockets.get(oldSocketId);
         if (oldSocket) {
-          // ⚠️ IMPORTANT: don't disconnect here forcibly
           console.log(
             `♻️ Updating socket reference for ${uniqueid} (old=${oldSocketId}, new=${socket.id})`
           );
@@ -85,7 +77,6 @@ io.on("connection", (socket) => {
 
     saveLastSeen(uniqueid, "Online");
 
-    // SEND BACK DEVICE REGISTERED CONFIRMATION
     io.to(socket.id).emit("deviceRegistered", { uniqueid });
 
     io.emit("deviceListUpdated", {
@@ -125,7 +116,6 @@ io.on("connection", (socket) => {
     setTimeout(() => {
       const mappedSocketId = deviceSockets.get(currentDeviceId);
 
-      // ⭐ IMPORTANT:
       // Agar map me ab naya socket aa chuka hai (different id),
       // to purane wale ke disconnect par OFFLINE mat karo.
       if (!mappedSocketId || mappedSocketId !== socket.id) {
@@ -135,7 +125,6 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Ab confirm hai ye hi last active tha
       deviceSockets.delete(currentDeviceId);
 
       console.log(`📵 Device fully offline → ${currentDeviceId}`);
