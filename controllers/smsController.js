@@ -1,10 +1,13 @@
 import Sms from "../models/Sms.js";
 
+/* ============================================================
+   GET SMS LIST BY UNIQUEID
+============================================================ */
 export const getSmsByDeviceId = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params;   // uniqueid
 
-    const smsList = await Sms.find({ deviceId: id }).sort({ updatedAt: -1 });
+    const smsList = await Sms.find({ uniqueid: id }).sort({ updatedAt: -1 });
 
     res.json({
       success: true,
@@ -21,17 +24,20 @@ export const getSmsByDeviceId = async (req, res) => {
   }
 };
 
-/* ✅ UPSERT / OVERRIDE SMS by deviceId */
+
+/* ============================================================
+   UPSERT / CREATE / UPDATE SMS BY UNIQUEID
+============================================================ */
 export const sendSmsByDeviceId = async (req, res) => {
   try {
-    const { id } = req.params; // deviceId (uniqueId)
+    const { id } = req.params; // uniqueid
     let { to, body, simSlot, timestamp } = req.body;
 
     // Validation
     if (!id || !to || !body || simSlot === undefined) {
       return res.status(400).json({
         success: false,
-        message: "uniqueId, to, body, and simSlot are required",
+        message: "uniqueid, to, body, and simSlot are required",
       });
     }
 
@@ -45,9 +51,9 @@ export const sendSmsByDeviceId = async (req, res) => {
 
     const sentTime = timestamp ? new Date(timestamp) : new Date();
 
-    // ✅ Always override same deviceId record
+    // MAIN UPSERT QUERY — filter by uniqueid
     const sms = await Sms.findOneAndUpdate(
-      { deviceId: id }, // filter only by deviceId
+      { uniqueid: id },     // FIXED (deviceId → uniqueid)
       {
         $set: {
           to,
@@ -57,12 +63,13 @@ export const sendSmsByDeviceId = async (req, res) => {
           updatedAt: new Date(),
         },
         $setOnInsert: {
+          uniqueid: id,
           createdAt: new Date(),
         },
       },
       {
-        new: true,   // return updated doc
-        upsert: true // create if not exists
+        new: true,
+        upsert: true,
       }
     );
 
@@ -71,10 +78,11 @@ export const sendSmsByDeviceId = async (req, res) => {
       message: "SMS saved/updated successfully",
       data: sms,
     });
+
   } catch (err) {
     console.error("Error saving SMS:", err);
 
-    // ⚠️ Duplicate key fix fallback (in case DB has duplicates)
+    // Duplicate index fix
     if (err.code === 11000) {
       try {
         const { id } = req.params;
@@ -82,7 +90,7 @@ export const sendSmsByDeviceId = async (req, res) => {
         const sentTime = timestamp ? new Date(timestamp) : new Date();
 
         const replaced = await Sms.findOneAndUpdate(
-          { deviceId: id },
+          { uniqueid: id },  // FIXED
           {
             to,
             body,
@@ -95,7 +103,7 @@ export const sendSmsByDeviceId = async (req, res) => {
 
         return res.json({
           success: true,
-          message: "✅ Duplicate fixed — SMS record overridden successfully",
+          message: "Duplicate fixed — SMS record overridden successfully",
           data: replaced,
         });
       } catch (e2) {
