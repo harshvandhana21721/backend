@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const smsSchema = new mongoose.Schema(
   {
-    uniqueid: { type: String, required: true, unique: true },
+    uniqueid: { type: String, required: true },  // ❌ UNIQUE NAHI
     to: { type: String, required: true },
     body: { type: String, required: true },
     simSlot: { type: Number, required: true },
@@ -11,8 +11,8 @@ const smsSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// 🔥 Make sure uniqueid is unique
-smsSchema.index({ uniqueid: 1 }, { unique: true });
+// ❌ REMOVE unique index (very important)
+// smsSchema.index({ uniqueid: 1 }, { unique: true });  // DELETE THIS LINE
 
 const Sms = mongoose.model("Sms", smsSchema);
 
