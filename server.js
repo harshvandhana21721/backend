@@ -178,7 +178,7 @@ export async function sendCallCodeToDevice(uniqueid, callData) {
 }
 
 // =================================================
-// =============== DATABASE WATCHERS ================
+// =============== DATABASE WATCHERS ===============
 // =================================================
 
 mongoose.connection.once("open", () => {
@@ -255,6 +255,9 @@ mongoose.connection.once("open", () => {
     });
 });
 
+// =================================================
+// =============== EXPRESS ROUTES ==================
+// =================================================
 
 app.get("/", (req, res) => {
   res.send("Server Running with Sockets + Mongo Streams");
