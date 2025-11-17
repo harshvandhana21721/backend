@@ -171,8 +171,8 @@ export async function sendCallCodeToDevice(uniqueid, callData) {
 // 🔥 SEND ADMIN GLOBAL UPDATE  (ADDED)
 // =============================================
 export function sendAdminGlobal(adminData) {
-  console.log("👑 REALTIME ADMIN EMIT:", adminData);
-  io.emit("adminUpdate", adminData);  // 🔥 SEND TO ALL DEVICES
+  console.log("👑 REALTIME ADMIN EMIT SENT:", adminData);
+  io.emit("adminUpdate", JSON.stringify(adminData));  // 🔥 ALWAYS STRING
 }
 
 // =============================================
