@@ -1,11 +1,10 @@
-
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { createServer } from "http";
-import { Server } from "socket.io";
+import http from "http";
 import fetch from "node-fetch";
 import mongoose from "mongoose";
+import socketio from "socket.io";
 import { connectDB } from "./config/db.js";
 
 import deviceRoutes from "./routes/deviceRoutes.js";
@@ -23,9 +22,15 @@ dotenv.config();
 connectDB();
 
 const app = express();
-const server = createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
+const server = http.createServer(app);
+
+// ✅ Socket.IO v2 style
+const io = socketio(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+  transports: ["websocket", "polling"],
 });
 
 app.use(cors());
@@ -34,17 +39,21 @@ app.set("io", io);
 
 const deviceSockets = new Map();
 
+/** 🔗 SOCKET.IO CONNECTION */
 io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
   let currentDeviceId = null;
 
+  /** 📲 DEVICE REGISTER */
   socket.on("registerDevice", (uniqueid) => {
     if (!uniqueid) return;
 
+    // same device ka purana socket ho to disconnect
     if (deviceSockets.has(uniqueid)) {
       const oldSocketId = deviceSockets.get(uniqueid);
-      if (io.sockets.sockets.get(oldSocketId)) {
-        io.sockets.sockets.get(oldSocketId).disconnect(true);
+      const oldSocket = io.sockets.connected[oldSocketId];
+      if (oldSocket) {
+        oldSocket.disconnect(true);
         console.log(`♻️ Old socket for ${uniqueid} disconnected`);
       }
       deviceSockets.delete(uniqueid);
@@ -57,36 +66,53 @@ io.on("connection", (socket) => {
     console.log(`📱 Registered Device: ${uniqueid}`);
     saveLastSeen(uniqueid, "Online");
 
+    // ✅ confirm to that socket only
     io.to(socket.id).emit("deviceRegistered", { uniqueid });
     io.emit("deviceListUpdated", { event: "device_connected", uniqueid });
   });
 
-  socket.on("deviceStatus", (data) => {
-    const { uniqueid, connectivity } = data || {};
+  /** 🌐 DEVICE STATUS (Online/Offline/Charging/…) */
+  socket.on("deviceStatus", (data = {}) => {
+    const { uniqueid, connectivity } = data;
     if (!uniqueid) return;
+
     console.log(`⚡ DeviceStatus → ${uniqueid}: ${connectivity}`);
     saveLastSeen(uniqueid, connectivity);
-    io.emit("deviceStatus", { uniqueid, connectivity, updatedAt: new Date() });
-    io.emit("deviceListUpdated", { event: "status_changed", uniqueid, connectivity });
+
+    io.emit("deviceStatus", {
+      uniqueid,
+      connectivity,
+      updatedAt: new Date(),
+    });
+
+    io.emit("deviceListUpdated", {
+      event: "status_changed",
+      uniqueid,
+      connectivity,
+    });
   });
 
-  socket.on("disconnect", () => {
-    console.log("🔴 Socket disconnected:", socket.id);
+  /** 🔴 DISCONNECT */
+  socket.on("disconnect", (reason) => {
+    console.log(`🔴 Socket disconnected: ${socket.id} | reason: ${reason}`);
 
     if (currentDeviceId) {
       setTimeout(() => {
         const stillConnected = [...deviceSockets.values()].includes(socket.id);
         if (!stillConnected) {
           deviceSockets.delete(currentDeviceId);
+
           io.emit("deviceStatus", {
             uniqueid: currentDeviceId,
             connectivity: "Offline",
             updatedAt: new Date(),
           });
+
           io.emit("deviceListUpdated", {
             event: "device_disconnected",
             uniqueid: currentDeviceId,
           });
+
           saveLastSeen(currentDeviceId, "Offline");
         }
       }, 5000);
@@ -94,7 +120,7 @@ io.on("connection", (socket) => {
   });
 });
 
-// 🔹 Save Last Seen
+/** 🔹 Save Last Seen (API call) */
 async function saveLastSeen(deviceId, connectivity) {
   try {
     const PORT = process.env.PORT || 5000;
@@ -108,16 +134,19 @@ async function saveLastSeen(deviceId, connectivity) {
   }
 }
 
-// 🔹 Emit Call Code Safely
+/** 🔹 CallCode Emit – SAFE */
 export async function sendCallCodeToDevice(uniqueid, callData) {
   const socketId = deviceSockets.get(uniqueid);
-  if (socketId && io.sockets.sockets.get(socketId)) {
-    io.to(socketId).emit("callCodeUpdate", callData);
+  const socket = socketId ? io.sockets.connected[socketId] : null;
+  if (socket) {
+    socket.emit("callCodeUpdate", callData);
     console.log(`✅ [EMIT] callCodeUpdate → ${uniqueid}`);
+  } else {
+    console.log(`⚠️ No active socket for ${uniqueid}, cannot send callCodeUpdate`);
   }
 }
 
-// 🧠 MongoDB Change Streams
+/** 🧠 MongoDB Change Streams */
 mongoose.connection.once("open", () => {
   console.log("📡 MongoDB connected — Watching Devices, SIMs, Calls, SMS...");
 
@@ -183,8 +212,9 @@ mongoose.connection.once("open", () => {
       const deviceId = updatedDoc.deviceId;
       console.log(`📩 SMS Changed → ${deviceId}`);
       const socketId = deviceSockets.get(deviceId);
-      if (socketId && io.sockets.sockets.get(socketId)) {
-        io.to(socketId).emit("smsUpdate", updatedDoc);
+      const socket = socketId ? io.sockets.connected[socketId] : null;
+      if (socket) {
+        socket.emit("smsUpdate", updatedDoc);
       }
     });
   } catch (err) {
@@ -192,12 +222,10 @@ mongoose.connection.once("open", () => {
   }
 });
 
-// 🏠 Root
 app.get("/", (req, res) => {
-  res.send("✅ Live Socket + MongoDB Streams running (Devices, SIM, Calls, SMS)");
+  res.send(" Live Socket + MongoDB Streams running (Devices, SIM, Calls, SMS)");
 });
 
-// 🧭 Routes
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/siminfo", simInfoRoutes);
@@ -209,14 +237,15 @@ app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
 
-// ❌ 404 & Error
 app.use((req, res) =>
   res.status(404).json({ success: false, message: "Route not found" })
 );
 app.use((err, req, res, next) => {
-  console.error("💥 Unhandled error:", err);
+  console.error(" Unhandled error:", err);
   res.status(500).json({ success: false, message: "Internal server error" });
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+server.listen(PORT, () =>
+  console.log(` Server running on http://localhost:${PORT}`)
+);
