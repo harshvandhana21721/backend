@@ -47,9 +47,16 @@ io.on("connection", (socket) => {
   // 👉 deviceId header + query dono se support
   const deviceIdFromQuery = socket.handshake?.query?.deviceId;
   const deviceIdFromHeader = socket.handshake?.headers?.deviceid;
-  const displayId = deviceIdFromHeader || deviceIdFromQuery || socket.id;
+  const deviceId = deviceIdFromHeader || deviceIdFromQuery;
 
-  console.log("🟢 Client connected:", displayId);
+  if (deviceId) {
+    // ✅ Ye real device id hai – sirf yehi log karenge
+    console.log("🟢 Client connected (DEVICE):", deviceId);
+  } else {
+    // Browser / panel / unknown client – random socket.id ko
+    // device id ke tarah log NHI karenge
+    console.log("🟢 Client connected (WEB PANEL), socket:", socket.id);
+  }
 
   let currentDeviceId = null;
 
@@ -276,5 +283,5 @@ app.use("/api/call-log", callLogRoutes);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () =>
-  console.log(`🚀 SERVER LIVE → http://localhost:${PORT}`)
+  console.log(` SERVER LIVE → http://localhost:${PORT}`)
 );
