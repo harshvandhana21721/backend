@@ -7,7 +7,7 @@ const generateUniqueId = () =>
   `DEV-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
 /* -----------------------------------------------------------
-   🟢 Register / Update Device (LIVE EMIT)
+   🟢 Register / Update Device
 ------------------------------------------------------------ */
 export const registerDevice = async (req, res) => {
   try {
@@ -82,7 +82,7 @@ export const registerDevice = async (req, res) => {
 };
 
 /* -----------------------------------------------------------
-   🟡 Update Device Status (LIVE EMIT)
+   🟡 Update Device Status
 ------------------------------------------------------------ */
 export const updateStatus = async (req, res) => {
   try {
@@ -110,11 +110,8 @@ export const updateStatus = async (req, res) => {
       status,
     };
 
-    if (typeof batteryLevel === "number")
-      update.batteryLevel = batteryLevel;
-
-    if (typeof isCharging === "boolean")
-      update.isCharging = isCharging;
+    if (typeof batteryLevel === "number") update.batteryLevel = batteryLevel;
+    if (typeof isCharging === "boolean") update.isCharging = isCharging;
 
     const device = await Device.findOneAndUpdate(
       { uniqueid },
@@ -123,9 +120,10 @@ export const updateStatus = async (req, res) => {
     );
 
     if (!device)
-      return res
-        .status(404)
-        .json({ success: false, message: "Device not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Device not found",
+      });
 
     io.emit("deviceListUpdated", {
       event: "device_status",
@@ -166,7 +164,13 @@ export const getAllDevices = async (req, res) => {
 
     const sortOption = sort === "oldest" ? { createdAt: 1 } : { createdAt: -1 };
 
-    const devices = await Device.find(query).sort(sortOption);
+    let devices = await Device.find(query).sort(sortOption);
+
+    // 🧹 Clean: ensure key = uniqueid only
+    devices = devices.map((d) => ({
+      ...d._doc,
+      uniqueid: d.uniqueid,
+    }));
 
     res.json({
       success: true,
