@@ -24,7 +24,7 @@ connectDB();
 const app = express();
 const server = http.createServer(app);
 
-// ✅ Socket.IO v2 style
+// ✅ Socket.IO v2 style (server aur client same protocol)
 const io = socketio(server, {
   cors: {
     origin: "*",
@@ -223,7 +223,7 @@ mongoose.connection.once("open", () => {
 });
 
 app.get("/", (req, res) => {
-  res.send(" Live Socket + MongoDB Streams running (Devices, SIM, Calls, SMS)");
+  res.send("✅ Live Socket + MongoDB Streams running (Devices, SIM, Calls, SMS)");
 });
 
 app.use("/api/device", deviceRoutes);
@@ -241,11 +241,11 @@ app.use((req, res) =>
   res.status(404).json({ success: false, message: "Route not found" })
 );
 app.use((err, req, res, next) => {
-  console.error(" Unhandled error:", err);
+  console.error("💥 Unhandled error:", err);
   res.status(500).json({ success: false, message: "Internal server error" });
 });
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () =>
-  console.log(` Server running on http://localhost:${PORT}`)
+  console.log(`🚀 Server running on http://localhost:${PORT}`)
 );
