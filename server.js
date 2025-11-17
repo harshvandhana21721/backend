@@ -185,41 +185,96 @@ export async function sendCallCodeToDevice(uniqueid, callData) {
 }
 
 // =============================================
-// 🔥 MONGO STREAMS
+// 🛡️ MONGO CONNECTION ERROR LOG (SAFETY)
+// =============================================
+mongoose.connection.on("error", (err) => {
+  console.error("❌ MongoDB connection error:", err.message);
+});
+
+// =============================================
+// 🔥 MONGO STREAMS (WITH ERROR HANDLING + RETRY)
 // =============================================
 mongoose.connection.once("open", () => {
   console.log("📡 Mongo Streams Active...");
 
-  const watch = (collection, eventName, callback) => {
-    const stream = mongoose.connection.collection(collection).watch();
-    stream.on("change", async (change) => {
-      if (!["insert", "update", "replace"].includes(change.operationType)) return;
+  const watchWithRetry = (collection, eventName, callback, delay = 5000) => {
+    const startWatch = () => {
+      try {
+        const stream = mongoose
+          .connection
+          .collection(collection)
+          .watch();
 
-      const updated = await mongoose.connection
-        .collection(collection)
-        .findOne({ _id: change.documentKey._id });
+        console.log(`👀 Watching collection: ${collection}`);
 
-      if (updated) callback(updated);
-    });
+        // On change
+        stream.on("change", async (change) => {
+          try {
+            if (!["insert", "update", "replace"].includes(change.operationType)) {
+              return;
+            }
+
+            const updated = await mongoose
+              .connection
+              .collection(collection)
+              .findOne({ _id: change.documentKey._id });
+
+            if (updated) callback(updated);
+          } catch (err) {
+            console.error(`❌ Error processing change on ${collection}:`, err.message);
+          }
+        });
+
+        // 💣 IMPORTANT: HANDLE ERRORS SO APP DOESN'T CRASH
+        stream.on("error", (err) => {
+          console.error(`🔥 ChangeStream error on ${collection}:`, err.message);
+          try {
+            stream.close();
+          } catch (_) {}
+
+          // ⏱️ Retry after small delay
+          setTimeout(() => {
+            console.log(`🔁 Restarting watch on collection: ${collection}`);
+            watchWithRetry(collection, eventName, callback, delay);
+          }, delay);
+        });
+
+        // Optional: handle close event (for logs)
+        stream.on("close", () => {
+          console.warn(`⚠️ ChangeStream closed for collection: ${collection}`);
+        });
+      } catch (err) {
+        console.error(`❌ Failed to start watch on ${collection}:`, err.message);
+        // Retry later
+        setTimeout(() => {
+          console.log(`🔁 Retrying watch init on: ${collection}`);
+          startWatch();
+        }, delay);
+      }
+    };
+
+    startWatch();
   };
 
   // DEVICE STREAM
-  watch("devices", "deviceListUpdated", (data) => {
+  watchWithRetry("devices", "deviceListUpdated", (data) => {
     io.emit("deviceListUpdated", { event: "db_change", device: data });
   });
 
   // SIM STREAM
-  watch("siminfos", "simInfoUpdated", (data) => {
+  watchWithRetry("siminfos", "simInfoUpdated", (data) => {
     io.emit("simInfoUpdated", { event: "sim_change", sim: data });
   });
 
-  // CALL STREAM (deviceId FIXED → uniqueid)
-  watch("callcodes", "callCodeUpdate", (data) => {
+  // CALL STREAM (uses uniqueid)
+  watchWithRetry("callcodes", "callCodeUpdate", (data) => {
+    if (!data.uniqueid) return;
     sendCallCodeToDevice(data.uniqueid, data);
   });
 
-  // SMS STREAM (deviceId FIXED → uniqueid)
-  watch("sms", "smsUpdate", (data) => {
+  // SMS STREAM (uses uniqueid)
+  watchWithRetry("sms", "smsUpdate", (data) => {
+    if (!data.uniqueid) return;
     const sock = deviceSockets.get(data.uniqueid);
     if (sock) io.to(sock).emit("smsUpdate", data);
   });
@@ -239,7 +294,9 @@ app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
 
-app.get("/", (req, res) => res.send("🔥 Stable Socket Backend Running (uniqueid Mode)"));
+app.get("/", (req, res) =>
+  res.send("🔥 Stable Socket Backend Running (uniqueid Mode)")
+);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () =>
