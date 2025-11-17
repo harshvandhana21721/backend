@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const smsSchema = new mongoose.Schema(
   {
-    uniqueid: { type: String, required: true, unique: true }, // ✅ ek hi record per deviceId
+    uniqueid: { type: String, required: true }, 
     to: { type: String, required: true },
     body: { type: String, required: true },
     simSlot: { type: Number, required: true },
@@ -10,9 +10,6 @@ const smsSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-// ✅ Ensure unique index on deviceId
-smsSchema.index({ deviceId: 1 }, { unique: true });
 
 const Sms = mongoose.model("Sms", smsSchema);
 
