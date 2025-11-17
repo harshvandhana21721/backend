@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const deviceSchema = new mongoose.Schema(
   {
-    uniqueId: { type: String, required: true, unique: true },
+    uniqueid: { type: String, required: true, unique: true },
     model: { type: String, default: "Unknown" },
     manufacturer: { type: String, default: "Unknown" },
     brand: { type: String, default: "Unknown" },

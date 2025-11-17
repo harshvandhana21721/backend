@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const serialSchema = new mongoose.Schema(
   {
-    uniqueId: {
+    uniqueid: {
       type: String,
       required: true,
       unique: true,

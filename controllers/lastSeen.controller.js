@@ -1,16 +1,19 @@
 import LastSeen from "../models/LastSeen.js";
 
-/* ✅ GET last seen by deviceId */
+/* ---------------------------------------------------------
+   🟢 GET last seen by uniqueid 
+---------------------------------------------------------- */
 export const getLastSeenByDeviceId = async (req, res) => {
   try {
-    const { id } = req.params;
-    const record = await LastSeen.findOne({ deviceId: id });
+    const { id } = req.params; // this is uniqueid
+
+    const record = await LastSeen.findOne({ uniqueid: id });
 
     if (!record) {
       return res.json({
         success: true,
         message: "No last seen record yet",
-        data: { deviceId: id, status: "inactive", lastSeenAt: null },
+        data: { uniqueid: id, status: "inactive", lastSeenAt: null },
       });
     }
 
@@ -25,10 +28,12 @@ export const getLastSeenByDeviceId = async (req, res) => {
   }
 };
 
-/* ✅ UPDATE Online/Offline from Socket */
+/* ---------------------------------------------------------
+   🟢 UPDATE Online/Offline from Socket (uniqueid)
+---------------------------------------------------------- */
 export const updateLastSeenStatus = async (req, res) => {
   try {
-    const { id } = req.params; // deviceId
+    const { id } = req.params; // uniqueid
     const { connectivity } = req.body; // Online / Offline
 
     if (!["Online", "Offline"].includes(connectivity)) {
@@ -46,14 +51,14 @@ export const updateLastSeenStatus = async (req, res) => {
     };
 
     if (!isOnline) {
-      updateData.lastSeenAt = new Date(); // Save time only when offline
+      updateData.lastSeenAt = new Date(); // Only save time on offline
     }
 
     const record = await LastSeen.findOneAndUpdate(
-      { deviceId: id },
+      { uniqueid: id }, // FIXED: deviceId removed
       {
         $set: updateData,
-        $setOnInsert: { createdAt: new Date() },
+        $setOnInsert: { createdAt: new Date(), uniqueid: id },
       },
       { new: true, upsert: true }
     );

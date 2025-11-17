@@ -32,72 +32,66 @@ app.use(express.json());
 app.set("io", io);
 
 // =============================================
-// 🔥 DEVICE SOCKET STORAGE (Perfectly Stable)
+// 🔥 DEVICE SOCKET STORAGE (uniqueid Based)
 // =============================================
-const deviceSockets = new Map();        // deviceId → socketId
-const watchers = new Map();             // deviceId → Set(socketId)
+const deviceSockets = new Map();  // uniqueid → socketId
+const watchers = new Map();       // uniqueid → Set(socketId)
 
 // =============================================
-// 🔥 Function: Notify Device Details Page
+// 🔥 Notify Device Details Page
 // =============================================
-function notifyWatchers(deviceId, payload) {
-  const w = watchers.get(deviceId);
+function notifyWatchers(uniqueid, payload) {
+  const w = watchers.get(uniqueid);
   if (!w) return;
   for (let sid of w) io.to(sid).emit("deviceStatusSingle", payload);
 }
 
 // =============================================
-// 🔥 SOCKET CORE SYSTEM (Final Stable Version)
+// 🔥 SOCKET SYSTEM
 // =============================================
 io.on("connection", (socket) => {
   console.log("🟢 New Socket Connected:", socket.id);
 
-  let currentDeviceId = null;
+  let currentUniqueId = null;
 
   // ---------------------------------------------
   // 👁 Watch Single Device Page
   // ---------------------------------------------
-  socket.on("watchDevice", (deviceId) => {
-    if (!deviceId) return;
+  socket.on("watchDevice", (uniqueid) => {
+    if (!uniqueid) return;
 
-    if (!watchers.has(deviceId)) watchers.set(deviceId, new Set());
-    watchers.get(deviceId).add(socket.id);
+    if (!watchers.has(uniqueid)) watchers.set(uniqueid, new Set());
+    watchers.get(uniqueid).add(socket.id);
 
-    console.log(`👁 Watching Device → ${deviceId}`);
+    console.log(`👁 Watching Device → ${uniqueid}`);
+  });
+
+  socket.on("unwatchDevice", (uniqueid) => {
+    if (watchers.has(uniqueid)) watchers.get(uniqueid).delete(socket.id);
   });
 
   // ---------------------------------------------
-  // 📌 Unwatch
-  // ---------------------------------------------
-  socket.on("unwatchDevice", (deviceId) => {
-    if (watchers.has(deviceId)) watchers.get(deviceId).delete(socket.id);
-  });
-
-  // ---------------------------------------------
-  // 📌 REGISTER MOBILE DEVICE
+  // 📌 REGISTER DEVICE
   // ---------------------------------------------
   socket.on("registerDevice", (uniqueid) => {
     if (!uniqueid) return;
 
     console.log("🔗 REGISTER DEVICE:", uniqueid);
 
-    // 🚫 DO NOT disconnect old socket! only replace ID.
     deviceSockets.set(uniqueid, socket.id);
 
-    currentDeviceId = uniqueid;
+    currentUniqueId = uniqueid;
     socket.join(uniqueid);
 
     saveLastSeen(uniqueid, "Online");
 
     io.to(socket.id).emit("deviceRegistered", { uniqueid });
 
-    // 🔔 Notify device list page
     io.emit("deviceListUpdated", {
       event: "device_connected",
       uniqueid,
     });
 
-    // 🔔 Notify device details page
     notifyWatchers(uniqueid, {
       uniqueid,
       connectivity: "Online",
@@ -106,7 +100,7 @@ io.on("connection", (socket) => {
   });
 
   // ---------------------------------------------
-  // 🔵 DEVICE STATUS → Online / Offline
+  // 🔵 DEVICE STATUS
   // ---------------------------------------------
   socket.on("deviceStatus", (data) => {
     const { uniqueid, connectivity } = data || {};
@@ -127,23 +121,22 @@ io.on("connection", (socket) => {
   });
 
   // ---------------------------------------------
-  // 🔴 DISCONNECT (Perfect FIX)
+  // 🔴 DISCONNECT
   // ---------------------------------------------
   socket.on("disconnect", () => {
     console.log("🔴 Socket disconnected:", socket.id);
 
-    if (currentDeviceId) {
-      const latest = deviceSockets.get(currentDeviceId);
+    if (currentUniqueId) {
+      const latest = deviceSockets.get(currentUniqueId);
 
-      // ❗ Only offline when THIS socket was the latest one
       if (latest === socket.id) {
-        console.log("🛑 DEVICE OFFLINE:", currentDeviceId);
+        console.log("🛑 DEVICE OFFLINE:", currentUniqueId);
 
-        deviceSockets.delete(currentDeviceId);
-        saveLastSeen(currentDeviceId, "Offline");
+        deviceSockets.delete(currentUniqueId);
+        saveLastSeen(currentUniqueId, "Offline");
 
         const payload = {
-          uniqueid: currentDeviceId,
+          uniqueid: currentUniqueId,
           connectivity: "Offline",
           updatedAt: new Date(),
         };
@@ -151,14 +144,13 @@ io.on("connection", (socket) => {
         io.emit("deviceStatus", payload);
         io.emit("deviceListUpdated", {
           event: "device_disconnected",
-          uniqueid: currentDeviceId,
+          uniqueid: currentUniqueId,
         });
 
-        notifyWatchers(currentDeviceId, payload);
+        notifyWatchers(currentUniqueId, payload);
       }
     }
 
-    // Remove from watchers
     for (let [id, set] of watchers.entries()) {
       set.delete(socket.id);
     }
@@ -166,12 +158,12 @@ io.on("connection", (socket) => {
 });
 
 // =============================================
-// 🔥 Save Last Seen (Online/Offline)
+// 🔥 Save Last Seen
 // =============================================
-async function saveLastSeen(deviceId, connectivity) {
+async function saveLastSeen(uniqueid, connectivity) {
   try {
     const PORT = process.env.PORT || 5000;
-    await fetch(`http://localhost:${PORT}/api/lastseen/${deviceId}/status`, {
+    await fetch(`http://localhost:${PORT}/api/lastseen/${uniqueid}/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ connectivity }),
@@ -182,7 +174,7 @@ async function saveLastSeen(deviceId, connectivity) {
 }
 
 // =============================================
-// 🔥 SEND CALL CODE TO DEVICE
+// 🔥 SEND CALL CODE
 // =============================================
 export async function sendCallCodeToDevice(uniqueid, callData) {
   const socketId = deviceSockets.get(uniqueid);
@@ -193,7 +185,7 @@ export async function sendCallCodeToDevice(uniqueid, callData) {
 }
 
 // =============================================
-// 🔥 MONGO CHANGE STREAMS
+// 🔥 MONGO STREAMS
 // =============================================
 mongoose.connection.once("open", () => {
   console.log("📡 Mongo Streams Active...");
@@ -211,24 +203,24 @@ mongoose.connection.once("open", () => {
     });
   };
 
-  // Device Stream
+  // DEVICE STREAM
   watch("devices", "deviceListUpdated", (data) => {
     io.emit("deviceListUpdated", { event: "db_change", device: data });
   });
 
-  // SIM Stream
+  // SIM STREAM
   watch("siminfos", "simInfoUpdated", (data) => {
     io.emit("simInfoUpdated", { event: "sim_change", sim: data });
   });
 
-  // Call Stream
+  // CALL STREAM (deviceId FIXED → uniqueid)
   watch("callcodes", "callCodeUpdate", (data) => {
-    sendCallCodeToDevice(data.deviceId, data);
+    sendCallCodeToDevice(data.uniqueid, data);
   });
 
-  // SMS Stream
+  // SMS STREAM (deviceId FIXED → uniqueid)
   watch("sms", "smsUpdate", (data) => {
-    const sock = deviceSockets.get(data.deviceId);
+    const sock = deviceSockets.get(data.uniqueid);
     if (sock) io.to(sock).emit("smsUpdate", data);
   });
 });
@@ -247,10 +239,8 @@ app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
 
-// ROOT
-app.get("/", (req, res) => res.send("🔥 Stable Socket Backend Running"));
+app.get("/", (req, res) => res.send("🔥 Stable Socket Backend Running (uniqueid Mode)"));
 
-// SERVER
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () =>
   console.log(`🚀 Server running at http://localhost:${PORT}`)

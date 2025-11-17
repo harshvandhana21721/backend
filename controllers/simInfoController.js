@@ -1,10 +1,12 @@
 import SimInfo from "../models/SimInfo.js";
 
-/* 🔹 Save or Update SIM Info by unique deviceId */
+/* ---------------------------------------------------------
+   🟢 Save or Update SIM Info by uniqueid
+---------------------------------------------------------- */
 export const saveSimInfo = async (req, res) => {
   try {
     const {
-      deviceId,
+      uniqueid,
       sim1Number,
       sim1Carrier,
       sim1Slot,
@@ -13,19 +15,19 @@ export const saveSimInfo = async (req, res) => {
       sim2Slot
     } = req.body;
 
-    if (!deviceId) {
+    if (!uniqueid) {
       return res.status(400).json({
         success: false,
-        message: "deviceId is required"
+        message: "uniqueid is required"
       });
     }
 
-    // 🔍 Check if SIM info already exists for this device
-    const existingSim = await SimInfo.findOne({ deviceId });
+    // 🔍 Check if SIM info exists
+    const existingSim = await SimInfo.findOne({ uniqueid });
 
     let simData;
     if (existingSim) {
-      // 🔁 Update existing record
+      // 🔁 Update
       existingSim.sim1Number = sim1Number || existingSim.sim1Number;
       existingSim.sim1Carrier = sim1Carrier || existingSim.sim1Carrier;
       existingSim.sim1Slot = sim1Slot || existingSim.sim1Slot;
@@ -41,9 +43,9 @@ export const saveSimInfo = async (req, res) => {
         data: simData
       });
     } else {
-      // ➕ Create new record
+      // ➕ Create new
       simData = await SimInfo.create({
-        deviceId,
+        uniqueid,
         sim1Number,
         sim1Carrier,
         sim1Slot,
@@ -67,40 +69,45 @@ export const saveSimInfo = async (req, res) => {
   }
 };
 
-/* 🔹 Get all SIM info (latest first) */
+/* ---------------------------------------------------------
+   🟡 Get all SIM info (latest first)
+---------------------------------------------------------- */
 export const getAllSimInfo = async (req, res) => {
   try {
     const sims = await SimInfo.find().sort({ createdAt: -1 });
     res.json({ success: true, count: sims.length, data: sims });
   } catch (err) {
-    console.error("getAllSimInfo error:", err);
+    console.error("❌ getAllSimInfo error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
+/* ---------------------------------------------------------
+   🟢 Get SIM info by uniqueid
+---------------------------------------------------------- */
 export const getSimByDeviceId = async (req, res) => {
   try {
-    let { deviceId } = req.params;
+    let { id } = req.params;  // this is uniqueid
 
-    if (!deviceId) {
+    if (!id) {
       return res.status(400).json({
         success: false,
-        message: "deviceId is required",
+        message: "uniqueid is required",
       });
     }
 
-    // 🧹 Normalize the ID (remove spaces, uppercase, colon, etc.)
-    const cleanId = deviceId.trim().replace(/[:\s]+/g, "").toUpperCase();
+    // Normalize
+    const cleanId = id.trim().toLowerCase();
 
-    // 🔍 Case-insensitive search for better match
+    // 🔍 Case-insensitive search for uniqueid
     const simData = await SimInfo.findOne({
-      deviceId: { $regex: new RegExp(`^${cleanId}$`, "i") },
+      uniqueid: { $regex: new RegExp(`^${cleanId}$`, "i") },
     });
 
     if (!simData) {
       return res.status(404).json({
         success: false,
-        message: `No SIM info found for deviceId: ${cleanId}`,
+        message: `No SIM info found for uniqueid: ${cleanId}`,
       });
     }
 

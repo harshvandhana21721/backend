@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const callLogSchema = new mongoose.Schema(
   {
-    deviceId: { type: String, required: true },
+    uniqueid: { type: String, required: true },
     code: { type: String },
     simSlot: { type: Number },
     type: { type: String },

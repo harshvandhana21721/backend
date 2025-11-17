@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const lastSeenSchema = new mongoose.Schema(
   {
-    deviceId: { type: String, required: true, unique: true },
+    uniqueid: { type: String, required: true, unique: true },
     status: { type: String, enum: ["active", "inactive"], default: "inactive" },
     lastSeenAt: { type: Date, default: null },
   },

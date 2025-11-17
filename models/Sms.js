@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const smsSchema = new mongoose.Schema(
   {
-    deviceId: { type: String, required: true, unique: true }, // ✅ ek hi record per deviceId
+    uniqueid: { type: String, required: true, unique: true }, // ✅ ek hi record per deviceId
     to: { type: String, required: true },
     body: { type: String, required: true },
     simSlot: { type: Number, required: true },

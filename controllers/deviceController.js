@@ -1,9 +1,9 @@
 import Device from "../models/Device.js";
 
 /* -----------------------------------------------------------
-   🔹 Generate Random Device ID
+   🔹 Generate Random uniqueid
 ------------------------------------------------------------ */
-const generateDeviceId = () =>
+const generateUniqueId = () =>
   `DEV-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
 /* -----------------------------------------------------------
@@ -12,7 +12,8 @@ const generateDeviceId = () =>
 export const registerDevice = async (req, res) => {
   try {
     const io = req.app.get("io");
-    let { uniqueId, model, manufacturer, androidVersion, brand, simOperator } =
+
+    let { uniqueid, model, manufacturer, androidVersion, brand, simOperator } =
       req.body || {};
 
     model ||= "Unknown";
@@ -23,29 +24,34 @@ export const registerDevice = async (req, res) => {
 
     let device;
 
-    // 🔍 If device already exists, update
-    if (uniqueId) {
-      device = await Device.findOne({ uniqueId });
+    // 🔍 Already registered → update
+    if (uniqueid) {
+      device = await Device.findOne({ uniqueid });
+
       if (device) {
         device.lastSeenAt = new Date();
         device.connectivity = "Online";
         device.status = "ONLINE";
         await device.save();
 
-        io.emit("deviceListUpdated", { event: "device_updated", device });
+        io.emit("deviceListUpdated", {
+          event: "device_updated",
+          device,
+        });
 
         return res.status(200).json({
           success: true,
           message: "Device already registered — updated existing record",
-          deviceId: device.uniqueId,
+          uniqueid: device.uniqueid,
         });
       }
     }
 
-    // 🆕 Create new device
-    const deviceId = uniqueId || generateDeviceId();
+    // 🆕 New device
+    const newId = uniqueid || generateUniqueId();
+
     device = await Device.create({
-      uniqueId: deviceId,
+      uniqueid: newId,
       model,
       manufacturer,
       brand,
@@ -56,18 +62,22 @@ export const registerDevice = async (req, res) => {
       lastSeenAt: new Date(),
     });
 
-    io.emit("deviceListUpdated", { event: "device_registered", device });
+    io.emit("deviceListUpdated", {
+      event: "device_registered",
+      device,
+    });
 
     res.status(201).json({
       success: true,
       message: "Device registered successfully",
-      deviceId,
+      uniqueid: newId,
     });
   } catch (err) {
     console.error("registerDevice error:", err);
-    res
-      .status(500)
-      .json({ success: false, message: "Error registering device" });
+    res.status(500).json({
+      success: false,
+      message: "Error registering device",
+    });
   }
 };
 
@@ -77,14 +87,19 @@ export const registerDevice = async (req, res) => {
 export const updateStatus = async (req, res) => {
   try {
     const io = req.app.get("io");
-    const { deviceId, batteryLevel, isCharging, connectivity } = req.body || {};
-    if (!deviceId)
-      return res
-        .status(400)
-        .json({ success: false, message: "deviceId required" });
 
+    const { uniqueid, batteryLevel, isCharging, connectivity } = req.body || {};
+
+    if (!uniqueid)
+      return res.status(400).json({
+        success: false,
+        message: "uniqueid required",
+      });
+
+    // Status mapping
     let status = "OFFLINE";
     const lower = (connectivity || "").toLowerCase();
+
     if (lower.includes("online")) status = "ONLINE";
     else if (lower.includes("busy")) status = "BUSY";
     else if (lower.includes("idle")) status = "IDLE";
@@ -95,11 +110,14 @@ export const updateStatus = async (req, res) => {
       status,
     };
 
-    if (typeof batteryLevel === "number") update.batteryLevel = batteryLevel;
-    if (typeof isCharging === "boolean") update.isCharging = isCharging;
+    if (typeof batteryLevel === "number")
+      update.batteryLevel = batteryLevel;
+
+    if (typeof isCharging === "boolean")
+      update.isCharging = isCharging;
 
     const device = await Device.findOneAndUpdate(
-      { uniqueId: deviceId },
+      { uniqueid },
       update,
       { new: true }
     );
@@ -109,39 +127,52 @@ export const updateStatus = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Device not found" });
 
-    io.emit("deviceListUpdated", { event: "device_status", device });
+    io.emit("deviceListUpdated", {
+      event: "device_status",
+      device,
+    });
 
-    res.json({ success: true, message: "Status updated successfully" });
+    res.json({
+      success: true,
+      message: "Status updated successfully",
+    });
   } catch (err) {
     console.error("updateStatus error:", err);
-    res
-      .status(500)
-      .json({ success: false, message: "Server error", error: err.message });
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: err.message,
+    });
   }
 };
 
 /* -----------------------------------------------------------
-   🟢 Get All Devices (LIVE LIST SUPPORT)
+   🟢 Get All Devices
 ------------------------------------------------------------ */
 export const getAllDevices = async (req, res) => {
   try {
     const { search = "", sort = "latest" } = req.query;
 
     const query = {};
+
     if (search) {
       query.$or = [
         { brand: { $regex: search, $options: "i" } },
         { model: { $regex: search, $options: "i" } },
         { androidVersion: { $regex: search, $options: "i" } },
-        { uniqueId: { $regex: search, $options: "i" } },
+        { uniqueid: { $regex: search, $options: "i" } },
       ];
     }
 
     const sortOption = sort === "oldest" ? { createdAt: 1 } : { createdAt: -1 };
-    const devices = await Device.find(query).sort(sortOption);
-    const total = devices.length;
 
-    res.json({ success: true, total, data: devices });
+    const devices = await Device.find(query).sort(sortOption);
+
+    res.json({
+      success: true,
+      total: devices.length,
+      data: devices,
+    });
   } catch (err) {
     console.error("getAllDevices error:", err);
     res.status(500).json({
@@ -153,23 +184,30 @@ export const getAllDevices = async (req, res) => {
 };
 
 /* -----------------------------------------------------------
-   🟢 Get Single Device by ID
+   🟢 Get Single Device by uniqueid
 ------------------------------------------------------------ */
 export const getDeviceById = async (req, res) => {
   try {
     const { id } = req.params;
+
     if (!id)
-      return res
-        .status(400)
-        .json({ success: false, message: "Device ID required" });
+      return res.status(400).json({
+        success: false,
+        message: "uniqueid required",
+      });
 
-    const device = await Device.findOne({ uniqueId: id });
+    const device = await Device.findOne({ uniqueid: id });
+
     if (!device)
-      return res
-        .status(404)
-        .json({ success: false, message: "Device not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Device not found",
+      });
 
-    res.json({ success: true, data: device });
+    res.json({
+      success: true,
+      data: device,
+    });
   } catch (err) {
     console.error("getDeviceById error:", err);
     res.status(500).json({
