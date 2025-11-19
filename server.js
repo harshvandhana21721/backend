@@ -11,6 +11,7 @@ import { connectDB } from "./config/db.js";
 import deviceRoutes from "./routes/deviceRoutes.js";
 import smsRoutes from "./routes/smsRoutes.js";
 import simInfoRoutes from "./routes/simInfoRoutes.js";
+const authRoutes = require("./routes/authRoutes");
 import notificationRoutes from "./routes/notificationRoutes.js";
 import callRoutes from "./routes/callRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
@@ -257,6 +258,7 @@ mongoose.connection.once("open", () => {
 
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
+app.use("/api/auth", authRoutes);
 app.use("/api/siminfo", simInfoRoutes);
 app.use("/api/notification", notificationRoutes);
 app.use("/api/call", callRoutes);
@@ -266,7 +268,8 @@ app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
 
-app.get("/", (req, res) => res.send("🔥 Real-time Backend Running"));
+
+app.get("/", (req, res) => res.send(" Real-time Backend Running"));
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Server Running on PORT ${PORT}`));
+server.listen(PORT, () => console.log(` Server Running on PORT ${PORT}`));
