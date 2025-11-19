@@ -1,46 +1,40 @@
 import User from "../models/User.js";
 
-export const register = async (req, res) => {
+// AUTO CREATE PASSWORD WHEN SERVER STARTS
+export const initAdminPassword = async () => {
   try {
-    const { password } = req.body;
-
     const exists = await User.findOne({});
-    if (exists) {
-      return res.status(400).json({
-        success: false,
-        message: "Password already set",
-      });
-    }
 
-    await User.create({ password });
+    // Already created? do nothing
+    if (exists) return;
 
-    res.status(201).json({
-      success: true,
-      message: "Password saved",
-    });
+    const defaultPassword = "12345";  // APNA DEFAULT PASSWORD
+
+    await User.create({ password: defaultPassword });
+
+    console.log("✔ DEFAULT ADMIN PASSWORD SET:", defaultPassword);
 
   } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    console.log("❌ AUTO PASSWORD ERROR:", err.message);
   }
 };
 
+
+// LOGIN
 export const login = async (req, res) => {
   try {
     const { password } = req.body;
 
-    const user = await User.findOne({});
+    const admin = await User.findOne({});
 
-    if (!user) {
-      return res.status(401).json({
+    if (!admin) {
+      return res.status(400).json({
         success: false,
-        message: "No password set",
+        message: "Admin password not set",
       });
     }
 
-    if (user.password !== password) {
+    if (admin.password !== password) {
       return res.status(401).json({
         success: false,
         message: "Invalid password",

@@ -20,6 +20,9 @@ import callLogRoutes from "./routes/callLogRoutes.js";
 import statusRoutes from "./routes/statusRoutes.js";
 import lastSeenRoutes from "./routes/lastSeen.routes.js";
 
+//  ⚠ ADD THIS — AUTO ADMIN PASSWORD LOGIC
+import { initAdminPassword } from "./controllers/authController.js";
+
 dotenv.config();
 connectDB();
 
@@ -41,8 +44,8 @@ function cleanId(id) {
 }
 
 // MAPS
-const deviceSockets = new Map(); // device → socketID
-const watchers = new Map(); // UI watchers → socket list
+const deviceSockets = new Map();
+const watchers = new Map();
 
 // BROADCAST FOR UI
 function notifyWatchers(uniqueid, payload) {
@@ -196,8 +199,11 @@ export function sendAdminGlobal(data) {
 }
 
 // MONGO WATCH STREAMS ============================
-mongoose.connection.once("open", () => {
+mongoose.connection.once("open", async () => {
   console.log("📡 Mongo Streams ACTIVE");
+
+  // RUN DEFAULT ADMIN PASSWORD INIT HERE
+  await initAdminPassword();
 
   function watch(collection, cb) {
     const start = () => {
@@ -236,7 +242,7 @@ mongoose.connection.once("open", () => {
     }
   });
 
-  // SMS STREAM (REALTIME)
+  // SMS STREAM
   watch("sms", (doc) => {
     if (!doc.uniqueid) return;
 
@@ -266,9 +272,11 @@ app.use("/api/serial", serialRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
-
+app.use("/api/auth", authRoutes);
 
 app.get("/", (req, res) => res.send(" Real-time Backend Running"));
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(` Server Running on PORT ${PORT}`));
+server.listen(PORT, () =>
+  console.log(` Server Running on PORT ${PORT}`)
+);
