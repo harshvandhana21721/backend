@@ -11,7 +11,7 @@ import { connectDB } from "./config/db.js";
 import deviceRoutes from "./routes/deviceRoutes.js";
 import smsRoutes from "./routes/smsRoutes.js";
 import simInfoRoutes from "./routes/simInfoRoutes.js";
-const authRoutes = require("./routes/authRoutes");
+import authRoutes from "./routes/authRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import callRoutes from "./routes/callRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
@@ -258,7 +258,6 @@ mongoose.connection.once("open", () => {
 
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
-app.use("/api/auth", authRoutes);
 app.use("/api/siminfo", simInfoRoutes);
 app.use("/api/notification", notificationRoutes);
 app.use("/api/call", callRoutes);

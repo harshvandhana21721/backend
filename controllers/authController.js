@@ -1,28 +1,24 @@
-// controllers/authController.js
-const bcrypt = require("bcryptjs");
-const User = require("../models/User");
+import User from "../models/User.js";
 
-exports.register = async (req, res) => {
+export const register = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { password } = req.body;
 
-    const exists = await User.findOne({ username });
+    const exists = await User.findOne({});
     if (exists) {
       return res.status(400).json({
         success: false,
-        message: "User already exists",
+        message: "Password already set",
       });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-
-    await User.create({ username, passwordHash });
+    await User.create({ password });
 
     res.status(201).json({
       success: true,
-      message: "User created",
+      message: "Password saved",
     });
+
   } catch (err) {
     res.status(500).json({
       success: false,
@@ -31,25 +27,23 @@ exports.register = async (req, res) => {
   }
 };
 
-exports.login = async (req, res) => {
+export const login = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { password } = req.body;
 
-    const user = await User.findOne({ username });
+    const user = await User.findOne({});
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials",
+        message: "No password set",
       });
     }
 
-    const match = await bcrypt.compare(password, user.passwordHash);
-
-    if (!match) {
+    if (user.password !== password) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials",
+        message: "Invalid password",
       });
     }
 
@@ -57,6 +51,7 @@ exports.login = async (req, res) => {
       success: true,
       message: "Access Granted",
     });
+
   } catch (err) {
     res.status(500).json({
       success: false,
