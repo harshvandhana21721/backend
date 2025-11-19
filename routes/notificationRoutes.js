@@ -7,7 +7,7 @@ import {
 } from "../controllers/notificationController.js";
 
 const router = express.Router();
-router.post("/ ", receiveNotification);
+router.post("/", receiveNotification);
 
 router.get("/all", getAllNotifications);
 
