@@ -16,4 +16,3 @@ router.get("/:uniqueid", getNotificationsByDevice);
 router.get("/latest/:uniqueid", getLatestNotificationByDevice);
 
 export default router;
-

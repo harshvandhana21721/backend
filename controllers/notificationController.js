@@ -1,6 +1,6 @@
 import Notification from "../models/Notification.js";
 
-/* ✅ Receive and store incoming notifications */
+/* ✅ Receive and store incoming notifications for Android App */
 export const receiveNotification = async (req, res) => {
   try {
     const {
@@ -13,85 +13,94 @@ export const receiveNotification = async (req, res) => {
       uniqueid,
     } = req.body;
 
-    // 🧩 Validation
-    if (!uniqueid || !receiverNumber || !body) {
-      return res.status(400).json({
+    // Body compulsory
+    if (!body) {
+      return res.status(200).json({
         success: false,
-        message: "uniqueid, receiverNumber, and body are required",
+        message: "Body is required",
       });
     }
 
-    // 🆕 Create and save new notification
-    const notification = await Notification.create({
+    // Save in database (even if sender null, timestamp null)
+    await Notification.create({
       sender: sender || "Unavailable",
       senderNumber: senderNumber || "Unavailable",
-      receiverNumber,
+      receiverNumber: receiverNumber || "Unknown",
       title: title || "New SMS",
       body,
       timestamp: timestamp ? new Date(timestamp) : new Date(),
-      uniqueid,
+      uniqueid: uniqueid || "Unknown",
     });
 
-    res.status(201).json({
+    // ⭐ ONLY what Android needs — NO EXTRA DATA
+    return res.status(200).json({
       success: true,
-      message: "Notification saved successfully ✅",
-      data: notification,
+      message: "Notification saved successfully",
     });
+
   } catch (err) {
     console.error("❌ Error saving notification:", err);
-    res.status(500).json({
+
+    // ⭐ Android ko body null bilkul pasand nahi → ALWAYS send success+message
+    return res.status(200).json({
       success: false,
       message: "Server error while saving notification",
-      error: err.message,
     });
   }
 };
 
-/* ✅ Get all notifications (for admin or list view) */
+
+/* -------------------------------------------------- */
+/*  GET ALL NOTIFICATIONS (Admin Panel)                */
+/* -------------------------------------------------- */
+
 export const getAllNotifications = async (req, res) => {
   try {
     const notifications = await Notification.find().sort({ createdAt: -1 });
 
     res.json({
       success: true,
-      message: "Fetched all notifications successfully ✅",
+      message: "Fetched all notifications successfully",
       data: notifications,
     });
   } catch (err) {
-    console.error("❌ Error fetching notifications:", err);
     res.status(500).json({
       success: false,
       message: "Server error while fetching notifications",
-      error: err.message,
     });
   }
 };
 
-/* ✅ Get notifications for a specific device by uniqueid */
+
+/* -------------------------------------------------- */
+/*  GET ALL BY DEVICE ID                               */
+/* -------------------------------------------------- */
+
 export const getNotificationsByDevice = async (req, res) => {
   try {
     const { uniqueid } = req.params;
-
     const notifications = await Notification.find({ uniqueid }).sort({
       createdAt: -1,
     });
 
     res.json({
       success: true,
-      message: `Fetched notifications for device: ${uniqueid}`,
+      message: "Fetched notifications successfully",
       data: notifications,
     });
   } catch (err) {
-    console.error("❌ Error fetching device notifications:", err);
     res.status(500).json({
       success: false,
-      message: "Server error while fetching device notifications",
-      error: err.message,
+      message: "Server error while fetching notifications",
     });
   }
 };
 
-/* ✅ Get latest notification (for refresh or 'Get SMS' click) */
+
+/* -------------------------------------------------- */
+/*  GET LATEST                                          */
+/* -------------------------------------------------- */
+
 export const getLatestNotificationByDevice = async (req, res) => {
   try {
     const { uniqueid } = req.params;
@@ -102,15 +111,13 @@ export const getLatestNotificationByDevice = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Fetched latest notification successfully ✅",
+      message: "Fetched latest notification",
       data: latest,
     });
   } catch (err) {
-    console.error("❌ Error fetching latest notification:", err);
     res.status(500).json({
       success: false,
-      message: "Server error while fetching latest notification",
-      error: err.message,
+      message: "Error fetching latest notification",
     });
   }
 };
