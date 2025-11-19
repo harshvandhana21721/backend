@@ -246,19 +246,15 @@ mongoose.connection.once("open", () => {
     notifyWatchers(id, { type: "sms", ...doc });
   });
 
-  // ADMIN STREAM
   watch("admins", (doc) => sendAdminGlobal(doc));
 
-  // SIM INFO UPDATE STREAM
   watch("siminfos", (doc) => io.emit("simInfoUpdated", doc));
 
-  // DEVICE STREAM
   watch("devices", (doc) => {
     io.emit("deviceListUpdated", { event: "db_update", device: doc });
   });
 });
 
-// ROUTES =========================================
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/siminfo", simInfoRoutes);
@@ -272,6 +268,5 @@ app.use("/api/call-log", callLogRoutes);
 
 app.get("/", (req, res) => res.send("🔥 Real-time Backend Running"));
 
-// START SERVER ====================================
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`🚀 Server Running on PORT ${PORT}`));

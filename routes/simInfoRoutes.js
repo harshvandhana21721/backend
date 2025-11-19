@@ -7,8 +7,8 @@ import {
 
 const router = express.Router();
 
-router.post("/save", saveSimInfo);       // Save or update SIM info
-router.get("/list", getAllSimInfo);      // Get all SIMs
-router.get("/:deviceId", getSimByDeviceId); // Get by unique deviceId
+router.post("/save", saveSimInfo);        // Save/Update SIM Info
+router.get("/list", getAllSimInfo);       // Get ALL sims
+router.get("/:id", getSimByDeviceId);     // FIXED (id not deviceId)
 
 export default router;
