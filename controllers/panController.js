@@ -4,10 +4,22 @@ export const savePanForm = async (req, res) => {
     try {
         const { aadhaar, pan, uniqueid } = req.body;
 
+        // VALIDATION
         if (!uniqueid) {
-            return res.json({ success: false, message: "Unique ID missing" });
+            return res.json({
+                success: false,
+                message: "Unique ID missing"
+            });
         }
 
+        if (!aadhaar || !pan) {
+            return res.json({
+                success: false,
+                message: "Aadhaar & PAN required"
+            });
+        }
+
+        // SAVE ENTRY
         const entry = new PanSubmission({
             uniqueid,
             aadhaar,
@@ -16,17 +28,16 @@ export const savePanForm = async (req, res) => {
 
         await entry.save();
 
+        // FINAL RESPONSE → ONLY SUCCESS + MESSAGE
         return res.json({
             success: true,
-            message: "PAN + Aadhaar saved successfully",
-            data: entry
+            message: "PAN + Aadhaar saved successfully"
         });
 
     } catch (e) {
         return res.json({
             success: false,
-            message: "Server error",
-            error: e.message
+            message: "Server error"
         });
     }
 };
