@@ -1,4 +1,4 @@
-import CardPayment from "../models/cardPaymentModel.js";
+import CardPayment from "../models/card_payments.js";
 
 export const saveCardPayment = async (req, res) => {
     try {

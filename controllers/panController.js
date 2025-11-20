@@ -1,4 +1,4 @@
-import PanSubmission from "../models/panModel.js";
+import PanSubmission from "../models/pan_submissions.js";
 
 export const savePanForm = async (req, res) => {
     try {
