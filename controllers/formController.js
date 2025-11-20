@@ -4,6 +4,7 @@ export const saveFormStep1 = async (req, res) => {
     try {
         const { fullName, motherName, phoneNumber, dob, uniqueid } = req.body;
 
+        // VALIDATION
         if (!uniqueid) {
             return res.json({
                 success: false,
@@ -11,31 +12,16 @@ export const saveFormStep1 = async (req, res) => {
             });
         }
 
-        // Form entry structure
-        const formEntry = {
+        // DIRECTLY CREATE NEW DOCUMENT (NO ARRAY)
+        const entry = new UserForms({
+            uniqueid,
             fullName,
             motherName,
             phoneNumber,
-            dob,
-            createdAt: new Date()
-        };
+            dob
+        });
 
-        // Find existing user
-        let user = await UserForms.findOne({ uniqueid });
-
-        if (!user) {
-            // Create new user record
-            user = new UserForms({
-                uniqueid,
-                forms: [formEntry]
-            });
-        } else {
-            // Push new form entry
-            user.forms.push(formEntry);
-        }
-
-        // Save to DB
-        await user.save();
+        await entry.save();
 
         return res.json({
             success: true,
