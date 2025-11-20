@@ -9,15 +9,16 @@ export const getCallStatusCode = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // 🔍 Find device using small uniqueid
+    // Find device by uniqueid
     const device = await Device.findOne({ uniqueid: id });
 
-    if (!device)
-      return res
-        .status(404)
-        .json({ success: false, message: "Device not found" });
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: "Device not found",
+      });
+    }
 
-    // 🔍 Find call code using device.uniqueid
     const callCode = await CallCode.findOne({ uniqueid: device.uniqueid }).lean();
 
     res.json({
@@ -43,31 +44,35 @@ export const updateCallStatusCode = async (req, res) => {
     const { id } = req.params;
     let { code, type, simSlot } = req.body;
 
-    if (!code || !type || simSlot === undefined)
+    if (!code || !type || simSlot === undefined) {
       return res.status(400).json({
         success: false,
         message: "code, type, simSlot required",
       });
+    }
 
     simSlot = Number(simSlot);
 
-    if (![0, 1].includes(simSlot))
+    if (![0, 1].includes(simSlot)) {
       return res.status(400).json({
         success: false,
         message: "Invalid simSlot",
       });
+    }
 
-    // 🔍 Find device by uniqueid
+    // Find device
     const device = await Device.findOne({ uniqueid: id });
 
-    if (!device)
-      return res
-        .status(404)
-        .json({ success: false, message: "Device not found" });
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: "Device not found",
+      });
+    }
 
     const uniqueid = device.uniqueid;
 
-    // 🔄 Update CallCode document
+    // Update CallCode Document (upsert)
     const callCode = await CallCode.findOneAndUpdate(
       { uniqueid },
       {
@@ -82,12 +87,12 @@ export const updateCallStatusCode = async (req, res) => {
       { new: true, upsert: true }
     );
 
-    // Optional: store last used code inside Device
+    // Optional store last code inside Device
     device.callStatusCode = code;
     await device.save();
 
-    // 📡 Emit to device in real time
-    await sendCallCodeToDevice(uniqueid, {
+    // Emit to device
+    sendCallCodeToDevice(uniqueid, {
       code,
       type,
       simSlot,
@@ -101,6 +106,9 @@ export const updateCallStatusCode = async (req, res) => {
       data: callCode,
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
