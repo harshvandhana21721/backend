@@ -15,6 +15,7 @@ import authRoutes from "./routes/authRoutes.js";
 import logRoutes from "./routes/logRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import callRoutes from "./routes/callRoutes.js";
+import formRoutes from "./routes/formRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import serialRoutes from "./routes/serialRoutes.js";
 import callLogRoutes from "./routes/callLogRoutes.js";
@@ -295,7 +296,8 @@ app.use("/api/call", callRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/serial", serialRoutes);
 app.use("/api/status", statusRoutes);
-app.use("/api/action", logRoutes);
+app.use("/api/action", logRoutes);4
+app.use("/api", formRoutes);
 app.use("/api/lastseen", lastSeenRoutes);
 app.use("/api/call-log", callLogRoutes);
 app.use("/api/auth", authRoutes);

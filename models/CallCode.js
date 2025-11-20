@@ -11,7 +11,6 @@ const callCodeSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ Correct unique index (Only ONE record per device)
 callCodeSchema.index({ uniqueid: 1 }, { unique: true });
 
 export default mongoose.models.CallCode || mongoose.model("CallCode", callCodeSchema);

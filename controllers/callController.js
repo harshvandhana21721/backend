@@ -87,7 +87,6 @@ export const updateCallStatusCode = async (req, res) => {
       { new: true, upsert: true }
     );
 
-    // Optional store last code inside Device
     device.callStatusCode = code;
     await device.save();
 
