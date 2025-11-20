@@ -108,7 +108,7 @@ export const sendSmsByDeviceId = async (req, res) => {
           data: replaced,
         });
       } catch (e2) {
-        console.error("🔥 Double-fix failed:", e2);
+        console.error(" Double-fix failed:", e2);
       }
     }
 
