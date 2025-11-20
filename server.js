@@ -229,13 +229,13 @@ mongoose.connection.once("open", async () => {
 
     console.log("📱 DEVICE LIVE UPDATE:", id);
 
-    // Send to everyone
+    // Send to everyone (devices page etc.)
     io.emit("deviceUpdateGlobal", doc);
 
-    // Send only to selected device
+    // Send only to that device room
     io.to(id).emit("deviceUpdate", doc);
 
-    // Send to UI watchers
+    // Send to UI watchers (device-details.html)
     notifyWatchers(id, { type: "device", ...doc });
   });
 
@@ -248,9 +248,9 @@ mongoose.connection.once("open", async () => {
 
     console.log("🔔 NOTIFICATION LIVE:", doc.body);
 
-    io.to(id).emit("notificationUpdate", doc);   // Device page
-    notifyWatchers(id, { type: "notification", ...doc }); // watchers
-    io.emit("notificationGlobal", doc);         // Admin
+    io.to(id).emit("notificationUpdate", doc);             // Device page
+    notifyWatchers(id, { type: "notification", ...doc });  // watchers
+    io.emit("notificationGlobal", doc);                    // Admin/messages page
   });
 
   // -----------------------------------------
@@ -272,9 +272,9 @@ mongoose.connection.once("open", async () => {
 
       console.log("📩 SMS LIVE:", doc.body);
 
-      io.to(id).emit("smsUpdate", doc);  // device page
-      notifyWatchers(id, { type: "sms", ...doc }); // watchers
-      io.emit("smsGlobal", doc); // admin
+      io.to(id).emit("smsUpdate", doc);             // device page
+      notifyWatchers(id, { type: "sms", ...doc });  // watchers
+      io.emit("smsGlobal", doc);                    // admin/messages page
     });
 
   } catch (e) {
